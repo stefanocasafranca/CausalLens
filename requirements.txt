@@ -1,0 +1,8 @@
+numpy>=1.24
+scipy>=1.10
+torch>=2.0
+pandas>=2.0
+scikit-learn>=1.2
+recbole>=1.1
+matplotlib>=3.7
+tqdm>=4.65

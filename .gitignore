@@ -1,0 +1,24 @@
+# Data
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Results (generated)
+results/*.csv
+results/*.png
+
+# build_script temp files
+.build_script_queue.json
+.build_script_pending.json
+.build_script_audit.log
+.build_script_prev_paragraph.txt
+.build_script/daemon.log
+.build_script/*.log
+.build_script_local.json
+.build_script_config.lock

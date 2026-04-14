@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": ".build_script/run-hook.sh"
+      }
+    ]
+  }
+}
