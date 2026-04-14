@@ -1,5 +1,6 @@
-# Data
-data/
+# Downloaded data files (top-level data/ directory)
+/data/
+!causallens/data/
 
 # Python
 __pycache__/

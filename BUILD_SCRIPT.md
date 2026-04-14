@@ -2,7 +2,7 @@
 
 ## Prompts Up to date with Output
 
-CausalLens is an open-source Python toolkit for causal autonomy auditing of recommender systems, targeting ACM RecSys 2026. The project implements four core metrics: Reachability Cost (minimum perturbation to push a target item into top-k), Manipulation Resistance (maximum Jaccard displacement an adversary can cause), Autonomy Asymmetry Index (ratio of external to self-influence), and Observational Deception Rate (fraction of observationally autonomous users who are causally trapped). Phase 1 delivers a from-scratch Matrix Factorization model with SGD training and a differentiable scoring path for white-box gradients, a MovieLens-1M data loader with filtering and contiguous ID remapping, white-box reachability via projected gradient descent and black-box via greedy coordinate search, white-box manipulation resistance via gradient ascent on a Jaccard surrogate and black-box via hill-climbing, and a CausalLens audit class that orchestrates all metrics with user sampling. The spec file CAUSALLENS_SPEC.md is created as the master reference. A public GitHub repository is connected for automatic commits.
+CausalLens is an open-source Python toolkit for causal autonomy auditing of recommender systems, targeting ACM RecSys 2026. The project implements four core metrics: Reachability Cost (minimum perturbation to push a target item into top-k via two-phase whitebox gradient descent with binary search or blackbox greedy coordinate search), Manipulation Resistance (maximum Jaccard displacement an adversary can cause via gradient ascent with rank-1 V perturbation or blackbox hill-climbing), Autonomy Asymmetry Index (ratio of max adversary displacement to self-influence displacement, with healthy/borderline/problematic labels), and Observational Deception Rate (fraction of users who appear autonomous by observational metrics but are causally trapped when tested with reachability). Three observational baselines are implemented: intra-list diversity (average pairwise Jaccard distance of user profiles within top-k), catalog coverage (fraction of items appearing in any user's top-k), and recommendation volatility (Jaccard displacement after small random rating perturbation). Phase 1 delivers a from-scratch Matrix Factorization model with SGD training and a differentiable scoring path using soft sigmoid-weighted ridge regression for white-box gradients. The MF differentiable path uses sigmoid((r-0.5)*20) weighting so unrated items get near-zero weight while perturbations smoothly introduce new ratings. Validation on MovieLens-1M with 10 users confirms: 13% reachability success (random targets at ranks 500-3000 are genuinely unreachable), self-influence 0.75-1.0, MF correctly shows zero manipulation vulnerability (frozen item factors make each user's scores depend only on their own ratings), diversity 0.66-0.85, volatility 0.0-0.33, coverage 2.3%. Phase 2 adds NeuMF (from scratch, GMF+MLP dual-path neural collaborative filtering) and SASRec (RecBole wrapper, skeleton) with cross-user coupling: adversary perturbation triggers warm-start retrain of shared item embeddings, propagating effects to all users' scores. NeuMF uses step-limited retraining (50 SGD steps, not full epochs) for practical blackbox search, and cached scratch model for fast user fine-tuning. MF is also updated with retrain support (retrain_steps=100) so cross-user manipulation effects can be measured when item factors are allowed to shift. Amazon Digital Music 5-core data loader is added for Phase 3 experiments. NeuMF validation on MovieLens-1M with 10 users confirms: mean manipulation displacement 0.60 (max 0.95), demonstrating real cross-user coupling unlike frozen-V MF; self-influence 0.57-1.0; mean AAI 0.78 with 1/10 users problematic (AAI=1.15, adversary influence exceeds self-influence); diversity 0.71-0.86; volatility 0.24-0.71 (higher than MF); coverage 1.6%. A public GitHub repository and Google Docs sync are connected.
 
 ## Project
 **Name:** CausalLens
@@ -14,36 +14,51 @@ CausalLens is an open-source Python toolkit for causal autonomy auditing of reco
 ```
 causallens/              — core package
   __init__.py
-  core.py                — CausalLens main audit class
+  core.py                — CausalLens main audit class (.reachability, .manipulation_resistance, .aai, .odr, .observational, .audit)
   recommender.py         — abstract Recommender interface
   metrics/
     __init__.py
-    reachability.py      — Reachability Cost (Def 1)
-    manipulation.py      — Manipulation Resistance (Def 2)
+    reachability.py      — Reachability Cost (Def 1) — whitebox + blackbox
+    manipulation.py      — Manipulation Resistance (Def 2) — whitebox + blackbox
+    aai.py               — Autonomy Asymmetry Index (Def 3)
+    odr.py               — Observational Deception Rate (Def 4)
+    observational.py     — intra-list diversity, catalog coverage, volatility
   models/
-    __init__.py
-    mf.py                — Matrix Factorization from scratch
+    __init__.py           — exports MatrixFactorization, NeuMF, NeuMFModule
+    mf.py                — Matrix Factorization from scratch (soft sigmoid ridge regression + retrain support)
+    neumf.py             — NeuMF from scratch (GMF+MLP with cross-user retrain)
+    sasrec.py            — SASRec RecBole wrapper (skeleton)
   data/
     __init__.py
     movielens.py         — MovieLens-1M loader
+    amazon.py            — Amazon Digital Music 5-core loader
   wrappers/
     __init__.py
   report/
     __init__.py
 experiments/             — experiment scripts
+  validate_neumf.py      — Phase 2 NeuMF validation (10 users, all metrics)
 results/                 — generated outputs
+validate_pipeline.py     — Phase 1 validation script
 CAUSALLENS_SPEC.md       — master specification
 requirements.txt         — dependencies
 ```
 
 **Features:**
-- Matrix Factorization with SGD training and differentiable ridge-regression scoring
-- MovieLens-1M auto-download, filter, and rating matrix construction
-- White-box reachability via projected gradient descent
-- Black-box reachability via greedy coordinate search
-- White-box manipulation resistance via gradient ascent on Jaccard surrogate
-- Black-box manipulation resistance via hill-climbing
-- CausalLens orchestrator with audit(), reachability(), manipulation_resistance()
+- Matrix Factorization with SGD training, differentiable soft-sigmoid ridge-regression scoring, and warm-start retrain for cross-user manipulation
+- NeuMF (Neural Matrix Factorization) with GMF+MLP dual paths, cross-user retrain via shared item embeddings, and cached scratch model for fast user fine-tuning
+- SASRec via RecBole wrapper (skeleton for Phase 3)
+- MovieLens-1M and Amazon Digital Music 5-core auto-download loaders
+- Two-phase whitebox reachability: maximize target score then binary search minimum budget
+- Black-box reachability via greedy coordinate search (in-place modify/restore, no matrix copies)
+- Whitebox manipulation resistance with rank-1 V perturbation approximation
+- Black-box manipulation resistance via hill-climbing and random search (for retrain-based models)
+- Autonomy Asymmetry Index: self-influence vs adversary influence ratio
+- Observational Deception Rate: surface-level vs causal autonomy comparison
+- Three observational baselines: diversity, coverage, volatility
+- CausalLens orchestrator with audit(), reachability(), manipulation_resistance(), aai(), odr(), observational()
 
 **Commands:**
 - `pip install -r requirements.txt` — install dependencies
+- `PYTHONPATH=. python validate_pipeline.py` — run Phase 1 MF validation (10 users, all metrics)
+- `PYTHONPATH=. python experiments/validate_neumf.py` — run Phase 2 NeuMF validation (10 users, all metrics)
