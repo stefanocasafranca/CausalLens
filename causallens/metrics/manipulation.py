@@ -63,25 +63,66 @@ def manipulation_resistance_whitebox(
     best_delta = None
     best_new_topk = orig_topk
 
+    # Precompute item factors and victim's original ratings
+    V = None
+    has_factors = hasattr(recommender, 'item_factors') and recommender.item_factors is not None
+    if has_factors:
+        V = recommender.item_factors  # (m, d)
+        global_bias = recommender.global_bias
+        item_bias = recommender.item_bias
+        weight_decay = recommender.weight_decay
+        n_factors = recommender.n_factors
+
     for step in range(n_steps):
         optimizer.zero_grad()
 
         # Perturb adversary's row
-        R_pert = R.clone()
-        R_pert[adversary_id] = torch.clamp(R[adversary_id] + delta_a, 0.0, 5.0)
+        adv_row = torch.clamp(R[adversary_id] + delta_a, 0.0, 5.0)
 
-        # Get victim's scores under perturbed matrix
-        # We need to retrain/recompute — for MF, use differentiable path
-        victim_scores = recommender.get_scores_differentiable(victim_id, R_pert[victim_id])
+        if has_factors:
+            # For MF: adversary's perturbation affects item factors.
+            # Re-solve item factors with adversary's new ratings via a
+            # rank-1 update approximation, then re-score victim.
+            victim_row = R[victim_id]
+            adv_weights = torch.sigmoid(adv_row * 10.0)
+            victim_weights = torch.sigmoid(victim_row * 10.0)
 
-        # Differentiable surrogate: maximise negative correlation with original ranking
-        orig_scores_t = torch.tensor(orig_scores, dtype=torch.float32)
-        # Push scores of original top-k items down, others up
+            # Solve for adversary's new user embedding
+            wV_a = adv_weights.unsqueeze(1) * V
+            adv_centered = adv_row - item_bias - global_bias
+            lam_a = weight_decay * adv_weights.sum()
+            A_a = wV_a.T @ V + lam_a * torch.eye(n_factors)
+            b_a = V.T @ (adv_weights * adv_centered)
+            u_adv = torch.linalg.solve(A_a, b_a)
+
+            # Perturbed item factors: V' ≈ V + lr * u_adv ⊗ (residual)
+            # Use a first-order approximation: shift item embeddings toward
+            # fitting the adversary's new ratings
+            adv_pred = u_adv @ V.T + item_bias + global_bias
+            adv_residual = (adv_row - adv_pred) * adv_weights
+            # Scale factor controls influence magnitude
+            scale = 0.01 / max(adv_weights.sum().item(), 1.0)
+            V_pert = V + scale * adv_residual.unsqueeze(1) * u_adv.unsqueeze(0)
+
+            # Re-solve victim's embedding with perturbed item factors
+            wV_v = victim_weights.unsqueeze(1) * V_pert
+            victim_centered = victim_row - item_bias - global_bias
+            lam_v = weight_decay * victim_weights.sum()
+            A_v = wV_v.T @ V_pert + lam_v * torch.eye(n_factors)
+            b_v = V_pert.T @ (victim_weights * victim_centered)
+            u_victim = torch.linalg.solve(A_v, b_v)
+
+            victim_scores = u_victim @ V_pert.T + item_bias + global_bias
+        else:
+            R_pert = R.clone()
+            R_pert[adversary_id] = adv_row
+            victim_scores = recommender.get_scores_differentiable(victim_id, R_pert[victim_id])
+
+        # Loss: push original top-k items' scores down
         orig_topk_list = list(orig_topk)
         topk_mask = torch.zeros(m)
         topk_mask[orig_topk_list] = 1.0
 
-        # Loss: minimise scores of original top-k items (maximise displacement)
         loss = (victim_scores * topk_mask).sum() - (victim_scores * (1 - topk_mask)).mean()
 
         loss.backward()
@@ -178,10 +219,10 @@ def manipulation_resistance_blackbox(
             best_val = 0.0
 
             for item in candidates:
+                old_val = R[adversary_id, item]
                 for val in rating_values:
-                    R_try = R.copy()
-                    R_try[adversary_id, item] = val
-                    scores = recommender.get_scores(victim_id, R_try)
+                    R[adversary_id, item] = val
+                    scores = recommender.get_scores(victim_id, R)
                     scores_masked = scores.copy()
                     scores_masked[rating_matrix[victim_id] > 0] = -np.inf
                     new_topk = set(np.argsort(scores_masked)[::-1][:k].tolist())
@@ -190,6 +231,7 @@ def manipulation_resistance_blackbox(
                         best_step_disp = disp
                         best_item = item
                         best_val = val
+                R[adversary_id, item] = old_val
 
             if best_item == -1:
                 break

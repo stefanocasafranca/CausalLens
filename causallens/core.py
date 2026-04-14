@@ -6,6 +6,9 @@ from tqdm import tqdm
 from causallens.recommender import Recommender
 from causallens.metrics.reachability import reachability_cost
 from causallens.metrics.manipulation import manipulation_resistance
+from causallens.metrics.aai import autonomy_asymmetry_index
+from causallens.metrics.odr import observational_deception_rate
+from causallens.metrics.observational import compute_observational_metrics
 
 
 class CausalLens:
@@ -144,6 +147,86 @@ class CausalLens:
             "epsilon": epsilon,
         }
 
+    def aai(
+        self,
+        user_ids: list[int] | None = None,
+        epsilon: int = 10,
+        mode: str = "blackbox",
+        n_adversaries: int = 3,
+        **kwargs,
+    ) -> dict:
+        """Compute Autonomy Asymmetry Index for users.
+
+        Args:
+            user_ids: Users to audit. If None, sample 200.
+            epsilon: Budget for self and adversary perturbations.
+            mode: "whitebox" or "blackbox".
+            n_adversaries: Number of adversaries per user.
+
+        Returns:
+            dict with per-user AAI results and summary statistics.
+        """
+        if user_ids is None:
+            user_ids = self._sample_users()
+
+        results = []
+        for uid in tqdm(user_ids, desc="AAI"):
+            result = autonomy_asymmetry_index(
+                self.recommender, uid, self.rating_matrix,
+                k=self.k, epsilon=epsilon, n_adversaries=n_adversaries,
+                mode=mode, **kwargs,
+            )
+            results.append(result)
+
+        aai_values = [r["aai"] for r in results if r["aai"] != float("inf")]
+        n_problematic = sum(1 for r in results if r["aai"] > 1.0)
+
+        return {
+            "results": results,
+            "mean_aai": float(np.mean(aai_values)) if aai_values else float("inf"),
+            "median_aai": float(np.median(aai_values)) if aai_values else float("inf"),
+            "n_problematic": n_problematic,
+            "n_users": len(user_ids),
+            "epsilon": epsilon,
+        }
+
+    def odr(
+        self,
+        user_ids: list[int] | None = None,
+        max_budget: int = 20,
+        reachability_mode: str = "blackbox",
+        **kwargs,
+    ) -> dict:
+        """Compute Observational Deception Rate.
+
+        Args:
+            user_ids: Users to audit. If None, sample 200.
+            max_budget: Max reachability budget.
+            reachability_mode: "whitebox" or "blackbox".
+
+        Returns:
+            ODR results dict.
+        """
+        if user_ids is None:
+            user_ids = self._sample_users()
+
+        return observational_deception_rate(
+            self.recommender, user_ids, self.rating_matrix,
+            k=self.k, max_budget=max_budget,
+            reachability_mode=reachability_mode, **kwargs,
+        )
+
+    def observational(
+        self,
+        user_ids: list[int] | None = None,
+    ) -> dict:
+        """Compute observational baseline metrics."""
+        if user_ids is None:
+            user_ids = self._sample_users()
+        return compute_observational_metrics(
+            self.recommender, user_ids, self.rating_matrix, k=self.k,
+        )
+
     def audit(
         self,
         user_sample: int = 200,
@@ -151,7 +234,7 @@ class CausalLens:
         mode: str = "whitebox",
         **kwargs,
     ) -> dict:
-        """Run full autonomy audit: reachability + manipulation resistance.
+        """Run full autonomy audit: all metrics.
 
         Returns combined results dict.
         """
@@ -159,10 +242,16 @@ class CausalLens:
 
         reach = self.reachability(user_ids=user_ids, mode=mode, **kwargs)
         manip = self.manipulation_resistance(victim_ids=user_ids, epsilon=epsilon, mode=mode, **kwargs)
+        aai_results = self.aai(user_ids=user_ids, epsilon=epsilon, mode=mode, **kwargs)
+        obs = self.observational(user_ids=user_ids)
+        odr_results = self.odr(user_ids=user_ids, reachability_mode=mode, **kwargs)
 
         return {
             "reachability": reach,
             "manipulation_resistance": manip,
+            "aai": aai_results,
+            "observational": obs,
+            "odr": odr_results,
             "n_users": self.n_users,
             "n_items": self.n_items,
             "k": self.k,

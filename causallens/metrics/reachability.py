@@ -23,13 +23,14 @@ def reachability_cost_whitebox(
     rating_matrix: np.ndarray,
     k: int = 10,
     max_budget: int = 20,
-    lr: float = 0.5,
+    lr: float = 1.0,
     n_steps: int = 100,
 ) -> dict:
     """White-box reachability via projected gradient descent.
 
-    Minimises ‖δ‖₁ such that target_item enters top-k.
-    Uses the recommender's differentiable scoring path.
+    Two-phase approach:
+    Phase 1: Maximise target item score to push it into top-k (ignore cost).
+    Phase 2: If successful, binary search on budget to find minimum cost.
 
     Args:
         recommender: A Recommender with get_scores_differentiable().
@@ -47,48 +48,39 @@ def reachability_cost_whitebox(
     m = rating_matrix.shape[1]
     r_orig = torch.tensor(rating_matrix[user_id], dtype=torch.float32)
 
-    # Items the user hasn't rated — perturbation candidates
-    unrated = (r_orig == 0)
-
-    delta = torch.zeros(m, requires_grad=True)
-
-    optimizer = torch.optim.Adam([delta], lr=lr)
-
     best_cost = float("inf")
     best_delta = None
     success = False
+    final_rank = m
+
+    # Phase 1: push target into top-k using full budget
+    delta = torch.zeros(m, requires_grad=True)
+    optimizer = torch.optim.Adam([delta], lr=lr)
 
     for step in range(n_steps):
         optimizer.zero_grad()
+        r_pert = torch.clamp(r_orig + delta, 0.0, 5.0)
+        scores = recommender.get_scores_differentiable(user_id, r_pert)
 
-        # Apply perturbation: clamp ratings to [1, 5] range for rated items
-        r_pert = r_orig + delta
-        # Only allow perturbation on unrated items (new ratings in [1,5])
-        # or small adjustments to rated items
-        r_clamped = torch.clamp(r_pert, 0.0, 5.0)
-
-        scores = recommender.get_scores_differentiable(user_id, r_clamped)
-
-        # Loss: push target_item score above k-th highest score
-        topk_vals, _ = torch.topk(scores, k)
-        threshold = topk_vals[-1]  # k-th highest score
+        # Direct loss: maximise target score, minimise top-k scores
         target_score = scores[target_item]
+        # Get k-th highest score excluding target
+        scores_no_target = scores.clone()
+        scores_no_target[target_item] = -1e9
+        topk_vals, _ = torch.topk(scores_no_target, k)
+        threshold = topk_vals[-1]
 
-        # Hinge loss: penalise when target is below threshold
-        rank_loss = torch.relu(threshold - target_score + 0.1)
-        # L1 regularisation to minimise perturbation
-        l1_loss = delta.abs().sum()
-
-        loss = rank_loss + 0.01 * l1_loss
+        # Maximise gap: target_score - threshold
+        loss = -(target_score - threshold)
         loss.backward()
         optimizer.step()
 
-        # Project: enforce budget constraint
+        # Project onto L1 ball
         with torch.no_grad():
             if delta.abs().sum() > max_budget:
-                delta.data = delta.data * (max_budget / delta.abs().sum())
+                delta.data = _project_l1_reachability(delta.data, max_budget)
 
-        # Check if target is now in top-k
+        # Check rank
         with torch.no_grad():
             r_check = torch.clamp(r_orig + delta, 0.0, 5.0)
             s = recommender.get_scores_differentiable(user_id, r_check)
@@ -98,22 +90,77 @@ def reachability_cost_whitebox(
                 best_cost = cost
                 best_delta = delta.detach().clone()
                 success = True
+                final_rank = rank
+
+    # Phase 2: if successful, try with smaller budgets via binary search
+    if success:
+        lo, hi = 0.0, best_cost
+        for _ in range(5):
+            mid = (lo + hi) / 2
+            delta2 = torch.zeros(m, requires_grad=True)
+            opt2 = torch.optim.Adam([delta2], lr=lr)
+            found = False
+            for step in range(n_steps // 2):
+                opt2.zero_grad()
+                r_pert = torch.clamp(r_orig + delta2, 0.0, 5.0)
+                scores = recommender.get_scores_differentiable(user_id, r_pert)
+                target_score = scores[target_item]
+                scores_no_target = scores.clone()
+                scores_no_target[target_item] = -1e9
+                topk_vals, _ = torch.topk(scores_no_target, k)
+                threshold = topk_vals[-1]
+                loss = -(target_score - threshold)
+                loss.backward()
+                opt2.step()
+                with torch.no_grad():
+                    if delta2.abs().sum() > mid:
+                        delta2.data = _project_l1_reachability(delta2.data, mid)
+                    r_check = torch.clamp(r_orig + delta2, 0.0, 5.0)
+                    s = recommender.get_scores_differentiable(user_id, r_check)
+                    rank = (s > s[target_item]).sum().item() + 1
+                    if rank <= k:
+                        found = True
+                        c = delta2.abs().sum().item()
+                        if c < best_cost:
+                            best_cost = c
+                            best_delta = delta2.detach().clone()
+                            final_rank = rank
+                        break
+            if found:
+                hi = mid
+            else:
+                lo = mid
 
     if best_delta is None:
         best_delta = delta.detach()
         best_cost = delta.abs().sum().item()
+        final_rank = m
         with torch.no_grad():
             r_check = torch.clamp(r_orig + best_delta, 0.0, 5.0)
             s = recommender.get_scores_differentiable(user_id, r_check)
-            rank = (s > s[target_item]).sum().item() + 1
+            final_rank = (s > s[target_item]).sum().item() + 1
 
     return {
         "cost": best_cost,
         "perturbation": best_delta.numpy(),
         "success": success,
-        "rank": rank,
+        "rank": final_rank,
         "n_changed": int((best_delta.abs() > 0.01).sum()),
     }
+
+
+def _project_l1_reachability(x: torch.Tensor, radius: float) -> torch.Tensor:
+    """Project x onto the L1 ball of given radius."""
+    if x.abs().sum() <= radius:
+        return x
+    u = x.abs().sort(descending=True).values
+    cumsum = torch.cumsum(u, dim=0)
+    rho = torch.where(u > (cumsum - radius) / torch.arange(1, len(u) + 1, dtype=x.dtype))[0]
+    if len(rho) == 0:
+        return torch.zeros_like(x)
+    rho = rho[-1]
+    theta = max(0, (cumsum[rho] - radius) / (rho + 1))
+    return torch.sign(x) * torch.clamp(x.abs() - theta, min=0)
 
 
 def reachability_cost_blackbox(
@@ -179,18 +226,19 @@ def reachability_cost_blackbox(
             candidates = np.random.choice(candidates, 200, replace=False)
 
         for item in candidates:
+            old_val = R[user_id, item]
             for val in rating_values:
-                R_try = R.copy()
-                R_try[user_id, item] = val
-                s = recommender.get_scores(user_id, R_try)
+                R[user_id, item] = val
+                s = recommender.get_scores(user_id, R)
                 s_masked = s.copy()
-                mask = R_try[user_id] > 0
+                mask = R[user_id] > 0
                 s_masked[mask] = -np.inf
                 r = int((s_masked > s_masked[target_item]).sum()) + 1
                 if r < best_rank:
                     best_rank = r
                     best_item = item
                     best_val = val
+            R[user_id, item] = old_val
 
         if best_item == -1:
             break  # No improvement possible

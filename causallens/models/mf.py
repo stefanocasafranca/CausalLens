@@ -103,28 +103,22 @@ class MatrixFactorization(Recommender):
     def get_scores(self, user_id: int, rating_matrix: np.ndarray) -> np.ndarray:
         """Predict scores for all items.
 
-        If rating_matrix[user_id] matches the training data exactly, this
-        simply returns U[user_id] @ V^T + biases.
-
-        If the row has been perturbed, we solve for a new user embedding
-        via a few steps of SGD on the observed entries — keeping V fixed.
-        This makes the scoring differentiable w.r.t. rating perturbations
-        for the white-box reachability gradient.
+        Re-solves for the user embedding via ridge regression on the
+        observed entries of rating_matrix[user_id], keeping item factors
+        fixed. This means perturbed rating matrices produce different
+        scores — essential for both whitebox and blackbox metrics.
         """
-        scores = (
-            self.user_factors[user_id] @ self.item_factors.T
-            + self.user_bias[user_id]
-            + self.item_bias
-            + self.global_bias
-        )
-        return scores.numpy()
+        r = torch.tensor(rating_matrix[user_id], dtype=torch.float32)
+        scores = self.get_scores_differentiable(user_id, r)
+        return scores.detach().numpy()
 
     def get_scores_differentiable(self, user_id: int, rating_vector: torch.Tensor) -> torch.Tensor:
         """Differentiable scoring path for white-box gradient computation.
 
         Given a (possibly perturbed) rating vector for user_id, solve for
-        a new user embedding via a closed-form ridge regression step, then
-        score all items.
+        a new user embedding via weighted ridge regression, then score all
+        items. Uses a soft sigmoid weighting so gradients flow even when
+        perturbations introduce new ratings on previously-unrated items.
 
         Args:
             user_id: User index.
@@ -135,17 +129,22 @@ class MatrixFactorization(Recommender):
             Tensor of shape (m,) of predicted scores for all items.
         """
         V = self.item_factors  # (m, d)
-        observed = rating_vector.nonzero(as_tuple=True)[0]
-        if len(observed) == 0:
+
+        # Soft weights: sigmoid centered at 0.5 so unrated items (r=0) get
+        # near-zero weight while new ratings smoothly gain influence.
+        # sigmoid((0 - 0.5)*20) ≈ 0.00005, sigmoid((1 - 0.5)*20) ≈ 0.99995
+        weights = torch.sigmoid((rating_vector - 0.5) * 20.0)  # (m,)
+
+        if weights.sum() < 1e-10:
             return self.item_bias + self.global_bias
 
-        V_obs = V[observed]  # (|obs|, d)
-        r_obs = rating_vector[observed] - self.item_bias[observed] - self.global_bias  # (|obs|,)
+        r_centered = rating_vector - self.item_bias - self.global_bias  # (m,)
 
-        # Ridge regression: u* = (V_obs^T V_obs + λI)^{-1} V_obs^T r_obs
-        lam = self.weight_decay * len(observed)
-        A = V_obs.T @ V_obs + lam * torch.eye(self.n_factors)
-        b = V_obs.T @ r_obs
+        # Weighted ridge regression: u* = (V^T W V + λI)^{-1} V^T (w ⊙ r)
+        wV = weights.unsqueeze(1) * V  # (m, d) — each row scaled by weight
+        lam = self.weight_decay * weights.sum()
+        A = wV.T @ V + lam * torch.eye(self.n_factors)
+        b = V.T @ (weights * r_centered)
         u_star = torch.linalg.solve(A, b)  # (d,)
 
         scores = u_star @ V.T + self.item_bias + self.global_bias
