@@ -10,15 +10,27 @@ import numpy as np
 import pandas as pd
 
 
-# Amazon Reviews v2 — 5-core Digital Music ratings
-AMAZON_DM_URL = "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_v2/categoryFilesSmall/Digital_Music_5.json.gz"
 DEFAULT_DATA_DIR = Path("data")
+
+# Amazon Musical Instruments 5-core (2023, CSV from HuggingFace)
+_MI_CSV_CANDIDATES = [
+    "data/amazon_2023/benchmark/5core/rating_only/Musical_Instruments.csv",
+]
+_MI_HF_PATH = "benchmark/5core/rating_only/Musical_Instruments.csv"
+
+# Legacy Digital Music JSONL candidates
+_DM_JSONL_CANDIDATES = [
+    "data/amazon_2023/raw/review_categories/Digital_Music.jsonl",
+    "data/Digital_Music_5.json.gz",
+]
 
 
 def load_amazon_digital_music(data_dir: str | Path | None = None,
                               min_user_ratings: int = 10,
                               min_item_ratings: int = 5) -> dict:
-    """Download (if needed) and load Amazon Digital Music 5-core ratings.
+    """Load Amazon Musical Instruments 5-core ratings (2023).
+
+    Falls back to Digital Music JSONL if available.
 
     Returns:
         dict with keys:
@@ -30,32 +42,83 @@ def load_amazon_digital_music(data_dir: str | Path | None = None,
             df: the filtered pandas DataFrame
     """
     data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    data_dir.mkdir(parents=True, exist_ok=True)
-    gz_path = data_dir / "Digital_Music_5.json.gz"
 
-    # Download if not present
-    if not gz_path.exists():
-        print(f"Downloading Amazon Digital Music to {gz_path}...")
-        urllib.request.urlretrieve(AMAZON_DM_URL, gz_path)
+    # Try 5-core CSV first (Musical Instruments)
+    csv_path = None
+    for cand in _MI_CSV_CANDIDATES:
+        if Path(cand).exists():
+            csv_path = Path(cand)
+            break
 
-    # Parse JSONL (one JSON object per line, gzipped)
-    print("Parsing Amazon Digital Music ratings...")
+    if csv_path is not None:
+        return _load_from_csv(csv_path, min_user_ratings, min_item_ratings)
+
+    # Try JSONL candidates (Digital Music legacy)
+    jsonl_path = None
+    for cand in _DM_JSONL_CANDIDATES:
+        if Path(cand).exists():
+            jsonl_path = Path(cand)
+            break
+
+    if jsonl_path is not None:
+        return _load_from_jsonl(jsonl_path, min_user_ratings, min_item_ratings)
+
+    # Download from HuggingFace
+    try:
+        from huggingface_hub import hf_hub_download
+        csv_path = Path(hf_hub_download(
+            repo_id="McAuley-Lab/Amazon-Reviews-2023",
+            filename=_MI_HF_PATH,
+            repo_type="dataset",
+            local_dir=str(data_dir / "amazon_2023"),
+        ))
+        print(f"Downloaded Amazon Musical Instruments from HuggingFace to {csv_path}")
+        return _load_from_csv(csv_path, min_user_ratings, min_item_ratings)
+    except Exception as e:
+        raise FileNotFoundError(
+            f"Cannot find or download Amazon dataset. Error: {e}"
+        )
+
+
+def _load_from_csv(csv_path, min_user_ratings, min_item_ratings):
+    """Load from 5-core CSV (columns: user_id, parent_asin, rating, timestamp)."""
+    print(f"Loading Amazon Musical Instruments from {csv_path}...")
+    df = pd.read_csv(csv_path)
+    df.columns = ["user_id", "item_id", "rating", "timestamp"]
+    print(f"  Raw: {len(df)} ratings, {df['user_id'].nunique()} users, {df['item_id'].nunique()} items")
+
+    return _build_matrix(df, min_user_ratings, min_item_ratings, "Amazon Musical Instruments")
+
+
+def _load_from_jsonl(jsonl_path, min_user_ratings, min_item_ratings):
+    """Load from JSONL (v2 or 2023 format)."""
+    print(f"Parsing Amazon Digital Music from {jsonl_path}...")
     records = []
-    with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+    opener = gzip.open if str(jsonl_path).endswith(".gz") else open
+    with opener(jsonl_path, "rt", encoding="utf-8") as f:
         for line in f:
-            obj = json.loads(line.strip())
-            if "overall" in obj and "reviewerID" in obj and "asin" in obj:
-                records.append({
-                    "user_id": obj["reviewerID"],
-                    "item_id": obj["asin"],
-                    "rating": float(obj["overall"]),
-                    "timestamp": int(obj.get("unixReviewTime", 0)),
-                })
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if "reviewerID" in obj:
+                uid = obj["reviewerID"]
+                rating = float(obj.get("overall", 0))
+            elif "user_id" in obj:
+                uid = obj["user_id"]
+                rating = float(obj.get("rating", 0))
+            else:
+                continue
+            if rating > 0 and "asin" in obj:
+                records.append({"user_id": uid, "item_id": obj["asin"], "rating": rating})
 
     df = pd.DataFrame(records)
     print(f"  Raw: {len(df)} ratings, {df['user_id'].nunique()} users, {df['item_id'].nunique()} items")
+    return _build_matrix(df, min_user_ratings, min_item_ratings, "Amazon Digital Music")
 
-    # Filter sparse users/items iteratively
+
+def _build_matrix(df, min_user_ratings, min_item_ratings, name):
+    """Filter and build rating matrix from DataFrame."""
     while True:
         user_counts = df["user_id"].value_counts()
         item_counts = df["item_id"].value_counts()
@@ -66,7 +129,6 @@ def load_amazon_digital_music(data_dir: str | Path | None = None,
             break
         df = filtered
 
-    # Create contiguous ID mappings
     unique_users = sorted(df["user_id"].unique())
     unique_items = sorted(df["item_id"].unique())
     user_map = {uid: idx for idx, uid in enumerate(unique_users)}
@@ -75,12 +137,11 @@ def load_amazon_digital_music(data_dir: str | Path | None = None,
     n_users = len(unique_users)
     n_items = len(unique_items)
 
-    # Build rating matrix
     rating_matrix = np.zeros((n_users, n_items), dtype=np.float32)
     for _, row in df.iterrows():
         rating_matrix[user_map[row["user_id"]], item_map[row["item_id"]]] = row["rating"]
 
-    print(f"Amazon Digital Music loaded: {n_users} users, {n_items} items, "
+    print(f"{name} loaded: {n_users} users, {n_items} items, "
           f"{(rating_matrix > 0).sum()} ratings, "
           f"density {(rating_matrix > 0).mean():.4f}")
 
