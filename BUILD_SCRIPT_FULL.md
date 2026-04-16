@@ -38,7 +38,9 @@ causallens/              — core package
     __init__.py
 experiments/             — experiment scripts
   validate_neumf.py      — Phase 2 NeuMF validation (10 users, all metrics)
+  run_phase3.py          — Phase 3 full experiment (200 users × 2 models × 2 datasets)
 results/                 — generated outputs
+  phase3_results.csv     — Phase 3 per-user results (800 rows)
 validate_pipeline.py     — Phase 1 validation script
 CAUSALLENS_SPEC.md       — master specification
 requirements.txt         — dependencies
