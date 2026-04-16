@@ -99,3 +99,13 @@ requirements.txt         — dependencies
   ADD: "Amazon Digital Music 5-core data loader is added for Phase 3 experiments."
   ADD: "NeuMF validation on MovieLens-1M with 10 users confirms: mean manipulation displacement 0.60 (max 0.95), demonstrating real cross-user coupling unlike frozen-V MF; self-influence 0.57-1.0; mean AAI 0.78 with 1/10 users problematic (AAI=1.15, adversary influence exceeds self-influence); diversity 0.71-0.86; volatility 0.24-0.71 (higher than MF); coverage 1.6%."
 -->
+
+5. Run Phase 3: full experiment pipeline with 2 models (MF, NeuMF) × 2 datasets (MovieLens-1M, Amazon Musical Instruments) × 200 users. Compute all metrics per-user, derive ODR, output CSV and summary table. Use CSV-based resume so crashed runs can continue. Switch Amazon dataset from Digital Music (404) to Musical Instruments 5-core from HuggingFace Amazon Reviews 2023.
+<!-- By: stefanocasafranca | 2026-04-15 -->
+<!-- Rephrased prompt for "Prompts Up to date with Output":
+  CHANGED: "Amazon Digital Music 5-core data loader is added for Phase 3 experiments." → "Amazon Musical Instruments 5-core data loader is added (HuggingFace Amazon Reviews 2023 format)."
+  ADD: "Phase 3 runs the full experiment pipeline: 2 models (MF, NeuMF) x 2 datasets (MovieLens-1M, Amazon-MI) x 200 users each, computing all metrics per-user with CSV-based resume, incremental writes, and adaptive timeouts."
+  ADD: "Results: MF/ML-1M ODR=68.3% (6.5% reachability, 0.45 manipulation, 0.72 self-influence), NeuMF/ML-1M ODR=90.4% (0.9% reachability, 0.52 manipulation, 0.78 self-influence), MF/Amazon-MI ODR=88.0% (3.6% reachability, 0.58 manipulation, 0.91 self-influence), NeuMF/Amazon-MI ODR=93.9% (0.6% reachability, 0.77 manipulation, 0.97 self-influence)."
+  ADD: "NeuMF consistently shows higher ODR than MF on both datasets, confirming that cross-user coupling via shared neural embeddings creates more observational deception — users appear autonomous but are causally trapped."
+  ADD: "Total runtime: 329.5 minutes for 800 user evaluations."
+-->
