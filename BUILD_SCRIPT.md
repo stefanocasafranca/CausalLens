@@ -65,3 +65,4 @@ requirements.txt         — dependencies
 - `pip install -r requirements.txt` — install dependencies
 - `PYTHONPATH=. python validate_pipeline.py` — run Phase 1 MF validation (10 users, all metrics)
 - `PYTHONPATH=. python experiments/validate_neumf.py` — run Phase 2 NeuMF validation (10 users, all metrics)
+- `PYTHONPATH=. python experiments/run_phase3.py` — run Phase 3 full experiment (200 users × 2 models × 2 datasets, ~5.5 hours)
