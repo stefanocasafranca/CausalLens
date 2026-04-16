@@ -59,6 +59,7 @@ requirements.txt         — dependencies
 - Observational Deception Rate: surface-level vs causal autonomy comparison
 - Three observational baselines: diversity, coverage, volatility
 - CausalLens orchestrator with audit(), reachability(), manipulation_resistance(), aai(), odr(), observational()
+- Phase 3 full experiment pipeline with CSV-based resume, incremental per-user writes, and adaptive timeouts
 
 **Commands:**
 - `pip install -r requirements.txt` — install dependencies
