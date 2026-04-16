@@ -50,7 +50,7 @@ requirements.txt         — dependencies
 - Matrix Factorization with SGD training, differentiable soft-sigmoid ridge-regression scoring, and warm-start retrain for cross-user manipulation
 - NeuMF (Neural Matrix Factorization) with GMF+MLP dual paths, cross-user retrain via shared item embeddings, and cached scratch model for fast user fine-tuning
 - SASRec via RecBole wrapper (skeleton for Phase 3)
-- MovieLens-1M and Amazon Digital Music 5-core auto-download loaders
+- MovieLens-1M and Amazon Musical Instruments 5-core auto-download loaders
 - Two-phase whitebox reachability: maximize target score then binary search minimum budget
 - Black-box reachability via greedy coordinate search (in-place modify/restore, no matrix copies)
 - Whitebox manipulation resistance with rank-1 V perturbation approximation
