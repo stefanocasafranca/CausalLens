@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccr}
+\toprule
+Model / Dataset & ILD (mean) & Catalog coverage & Volatility (mean) & Combined-ODR (\%) \\
+\midrule
+MF / ML-1M & 0.733 & 0.094 & 0.128 & 68.3 \\
+NeuMF / ML-1M & 0.819 & 0.000 & 0.579 & 90.4 \\
+MF / Amazon-MI & 0.983 & 0.015 & 0.359 & 88.0 \\
+NeuMF / Amazon-MI & 0.999 & 0.054 & 0.706 & 93.9 \\
+\bottomrule
+\end{tabular}
+\caption{Observational baselines and Observational Deception Rate per combo. Intra-list diversity (ILD) and volatility are per-user means; catalog coverage is population-level (constant within a combo). Combined-ODR is the fraction of users flagged \emph{observationally autonomous} (diversity $>$ median AND volatility $>$ median, within combo) who nonetheless fail the causal reachability test (\texttt{success\_rate}=0). Per-baseline ODR breakdown (ILD-ODR, Coverage-ODR, Volatility-ODR) is not recorded in the experiment CSV; only the Combined-ODR is reported here.}
+\label{tab:odr-breakdown}
+\end{table}
