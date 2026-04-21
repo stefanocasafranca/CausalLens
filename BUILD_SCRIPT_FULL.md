@@ -41,7 +41,16 @@ experiments/             — experiment scripts
   run_phase3.py          — Phase 3 full experiment (200 users × 2 models × 2 datasets)
 results/                 — generated outputs
   phase3_results.csv     — Phase 3 per-user results (800 rows)
+  figures/               — fig1-fig4 PDFs
+  tables/                — tab1-tab2 LaTeX
+  RESULTS_SUMMARY.md     — auto-generated results summary
+paper/                   — LaTeX source
+  causallens_paper.tex   — acmart sigconf paper
+  references.bib         — bibliography
 validate_pipeline.py     — Phase 1 validation script
+run_all.py               — full reproduction pipeline (--skip-training)
+setup.py                 — pip-installable package config
+README.md                — project README
 CAUSALLENS_SPEC.md       — master specification
 requirements.txt         — dependencies
 ```
