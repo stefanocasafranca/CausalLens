@@ -109,3 +109,15 @@ requirements.txt         — dependencies
   ADD: "NeuMF consistently shows higher ODR than MF on both datasets, confirming that cross-user coupling via shared neural embeddings creates more observational deception — users appear autonomous but are causally trapped."
   ADD: "Total runtime: 329.5 minutes for 800 user evaluations."
 -->
+
+6. Verify and fix Phase 5 outputs, then push. 1. Verify each PDF in results/figures/ renders and is not empty/corrupt. Regenerate any that fail. 2. Verify results/tables/tab1_main_results.tex compiles — wrap in a minimal LaTeX doc, run pdflatex. Fix syntax errors if any. 3. Verify every number in results/RESULTS_SUMMARY.md matches what pandas computes from results/phase3_results.csv. Fix any mismatch. 4. Reachability framing fix: 701/800 users have infinite reachability cost (budget=20 insufficient). Add a "Reachability Framing" section to RESULTS_SUMMARY.md. 5. Commit and push.
+<!-- By: stefanocasafranca | 2026-04-21 -->
+<!-- Rephrased prompt for "Prompts Up to date with Output": ADD: "Phase 5 outputs are verified: all 4 PDFs valid, LaTeX table compiles, all numbers in RESULTS_SUMMARY.md match CSV. A Reachability Framing section is added: 12.4% of users (99/800) are reachable within budget-20; among reachable users, NeuMF requires fewer flips (mean 8.87) than MF (mean 18.93)." -->
+
+7. Write the CausalLens paper. Output: paper/causallens_paper.tex (acmart sigconf) + paper/references.bib. 8 content pages max, every sentence carries information, no filler. Structure: Introduction, Related Work, Formal Definitions, System Design, Experiments, Results, Discussion, Conclusion.
+<!-- By: stefanocasafranca | 2026-04-21 -->
+<!-- Rephrased prompt for "Prompts Up to date with Output": ADD: "The paper is written in paper/causallens_paper.tex (acmart sigconf, 6 pages) with paper/references.bib (14 entries). Sections: Introduction (Instagram cross-user influence motivation), Related Work (Sharma et al. 2024, SteerEval, Beyond the Checkbox, Dean et al., Pearl), Formal Definitions (4 definitions with full math), System Design (abstract Recommender interface, white-box/black-box paths), Experiments (MF+NeuMF, ML-1M+Amazon-MI, 800 evaluations), Results (ODR 68-94%, manipulation gap 25.4%, reachability framing), Discussion, Conclusion." -->
+
+8. Final repo polish for CausalLens. README.md (professional, badges, quick start, citation), setup.py (name=causallens, version=0.1.0), run_all.py (full reproduction with --skip-training flag), .gitignore updates, stale file cleanup. Commit and push.
+<!-- By: stefanocasafranca | 2026-04-21 -->
+<!-- Rephrased prompt for "Prompts Up to date with Output": ADD: "Repo polish: professional README.md with badges/quick-start/citation, setup.py (pip-installable), run_all.py reproduction script with --skip-training flag. All pushed to GitHub." -->
