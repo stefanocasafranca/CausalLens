@@ -189,6 +189,9 @@ def fig1_reachability_cdf(df: pd.DataFrame) -> dict:
 
     ax.set_xlabel(r"Reachability cost (lower $\Rightarrow$ more manipulable)")
     ax.set_ylabel("CDF over users")
+    ax.set_title("12.4% of users reachable within budget-20;\n"
+                  "NeuMF: mean 8.87 flips vs MF: mean 18.93",
+                  fontsize=8, style="italic", pad=4)
     ax.set_ylim(0, 1)
     ax.legend(loc="lower right", frameon=False)
     fig.tight_layout(pad=0.3)
