@@ -12,6 +12,9 @@
 \usepackage{graphicx}
 \usepackage{subcaption}
 
+%% ── micro-typography ───────────────────────────────────────────────
+\emergencystretch=1em          % absorb minor overfull hboxes globally
+
 %% ── paths ───────────────────────────────────────────────────────────
 \graphicspath{{../results/figures/}}
 
@@ -96,7 +99,7 @@ Recent work has examined the steerability of recommender systems from complement
 The EU Digital Services Act~\cite{eu_dsa2022} requires platforms to assess systemic risks including effects on fundamental rights, creating demand for rigorous auditing methodology. Early analyses of platform audit reports have identified significant methodological gaps in how algorithmic influence is assessed---gaps that CausalLens addresses with concrete causal tooling.
 
 \paragraph{Observational metrics.}
-Intra-list diversity~\cite{zhang2008avoiding}, catalog coverage~\cite{ge2010beyond}, and recommendation volatility are standard beyond-accuracy metrics. Our ODR metric demonstrates that these observational indicators can be systematically misleading when used as proxies for user autonomy.
+Intra-list diversity~\cite{zhang2008avoiding}, catalog coverage~\cite{ge2010beyond}, and recommendation volatility are standard beyond-accuracy metrics. Our ODR metric demonstrates that these observational indicators can be systematically misleading as proxies for user autonomy.
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -120,9 +123,10 @@ where $\mathcal{C}$ constrains perturbations to valid rating values applied to u
 \begin{definition}[Manipulation Resistance]
 \label{def:manipulation}
 The manipulation resistance of user $i$ against adversary $a$ with budget $\varepsilon$ is:
-\begin{equation}
-    \mathcal{M}(i, a, \varepsilon) = \max_{\delta_a} d\!\left(\text{top-}k(f, i \mid R), \; \text{top-}k(f, i \mid R + \Delta_a)\right) \quad \text{s.t.} \quad \|\delta_a\|_1 \leq \varepsilon
-\end{equation}
+\begin{multline}
+    \mathcal{M}(i, a, \varepsilon) = \max_{\delta_a} d\!\bigl(\text{top-}k(f, i \mid R), \; \text{top-}k(f, i \mid R + \Delta_a)\bigr) \\
+    \text{s.t.} \quad \|\delta_a\|_1 \leq \varepsilon
+\end{multline}
 where $\Delta_a$ modifies \emph{only} adversary $a$'s ratings.
 \end{definition}
 
@@ -146,7 +150,7 @@ Let $\mathcal{A} \subset \mathcal{U}$ be the set of users flagged as autonomous 
 \end{equation}
 \end{definition}
 
-\noindent \textbf{Intuition.} ODR measures the fraction of users who \emph{look} autonomous by standard metrics but are in fact unable to change their recommendations through their own actions. High ODR means observational auditing systematically fails to detect causal entrapment.
+\noindent \textbf{Intuition.} ODR measures the fraction of users who \emph{look} autonomous by standard metrics but cannot change their recommendations through their own actions. High ODR means observational auditing systematically fails to detect causal entrapment.
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -154,7 +158,7 @@ Let $\mathcal{A} \subset \mathcal{U}$ be the set of users flagged as autonomous 
 \label{sec:system}
 %% ═════════════════════════════════════════════════════════════════════
 
-CausalLens is a Python library structured around an abstract \texttt{Recommender} interface that any model can implement by exposing three methods: \texttt{get\_scores(user, R)} for raw score computation, \texttt{get\_recommendations(user, R, k)} for top-$k$ retrieval, and \texttt{fit(R)} for training. This abstraction enables CausalLens to audit arbitrary recommender architectures without modification to the underlying model code.
+CausalLens is a Python library built around an abstract \texttt{Recom\-mend\-er} interface with three methods: \texttt{get\_scores} (raw scores), \texttt{get\_recom\-men\-da\-tions} (top-$k$ retrieval), and \texttt{fit} (training). This abstraction lets CausalLens audit arbitrary recommender architectures without modifying the underlying model code.
 
 \paragraph{Computation paths.}
 CausalLens provides two computation paths for each metric:
@@ -205,7 +209,7 @@ The reachability budget $B = 20$ reflects a conservative estimate of realistic a
 
 \subsection{Observational Deception Is Pervasive}
 
-The headline finding: across all four model--dataset combinations, a majority of observationally autonomous users are causally trapped (Table~\ref{tab:main-results}). ODR ranges from 68.3\% (MF/ML-1M) to 93.9\% (NeuMF/Amazon-MI). On NeuMF/ML-1M, 47 of 52 users who pass the diversity-and-volatility autonomy screen have zero reachability success---their recommendations cannot be altered by any combination of up to 20 rating changes, yet their feeds \emph{appear} diverse and responsive.
+The headline finding: across all four model--dataset combinations, a majority of observationally autonomous users are causally trapped (Table~\ref{tab:main-results}). ODR ranges from 68.3\% (MF on ML-1M) to 93.9\% (NeuMF on Amazon-MI). On NeuMF/ML-1M, 47 of 52 users who pass the diversity-and-volatility autonomy screen have zero reachability success---their recommendations cannot be altered by any combination of up to 20 rating changes, yet their feeds \emph{appear} diverse and responsive.
 
 \subsection{Architecture Determines Vulnerability}
 
@@ -235,7 +239,7 @@ Only 12.4\% of users (99/800) achieve any reachability success within budget-20 
 
 \subsection{Autonomy Asymmetry}
 
-Users with AAI $> 1$---where adversary influence exceeds self-influence---are concentrated in MF/ML-1M (13.0\% of users; Figure~\ref{fig:aai}). Counterintuitively, NeuMF shows fewer AAI $> 1$ users (3.0\% on ML-1M, 1.0\% on Amazon-MI) despite higher absolute manipulation. This is because NeuMF's cross-user coupling also amplifies self-influence: when a user's own rating changes trigger shared-parameter updates, those updates propagate back to the user's own scores. The geometry of the scatter plot (Figure~\ref{fig:aai}) reveals that MF users cluster along the low-external, high-self axis, while NeuMF pushes users into higher-external territory but with proportionally higher self-influence.
+Users with AAI ${>}\,1$ (adversary influence exceeds self-influence) are concentrated in MF/ML-1M (13.0\% of users; Figure~\ref{fig:aai}). Counterintuitively, NeuMF shows fewer AAI $> 1$ users (3.0\% on ML-1M, 1.0\% on Amazon-MI) despite higher absolute manipulation. This is because NeuMF's cross-user coupling also amplifies self-influence: when a user's own rating changes trigger shared-parameter updates, those updates propagate back to the user's own scores. The geometry of the scatter plot (Figure~\ref{fig:aai}) reveals that MF users cluster along the low-external, high-self axis, while NeuMF pushes users into higher-external territory but with proportionally higher self-influence.
 
 \begin{figure*}[t]
     \centering
@@ -270,8 +274,8 @@ Our results challenge the common assumption that diversity and volatility metric
 The consistent gap between MF and NeuMF across all metrics demonstrates that model architecture is not merely an implementation detail for auditing purposes. Shared parameters create coupling channels invisible to observational metrics. As recommender systems adopt increasingly complex architectures (transformers, graph neural networks), causal auditing becomes more---not less---necessary.
 
 \paragraph{Threats to validity.}
-\emph{Internal}: Our black-box solvers (random search, hill-climbing) provide lower bounds on true manipulation displacement and upper bounds on reachability cost---stronger solvers would shift the numbers but not the direction of our findings. The warm-start retrain mechanism (25 steps) may underestimate full-retrain coupling effects.
-\emph{External}: MF and NeuMF are simpler than production systems (transformers, graph neural networks). We expect our findings to \emph{strengthen} with deeper architectures that have richer cross-user parameter sharing, but this remains to be validated. Our two datasets (MovieLens-1M, Amazon-MI) span different domains and sparsity levels, but both use explicit ratings; implicit-feedback systems may behave differently.
+\emph{Internal}: Our black-box solvers (random search, hill-climbing) provide lower bounds on true manipulation displacement and upper bounds on reachability cost---stronger solvers would shift the numbers but not the direction of our findings. The warm-start retrain (25 steps) may underestimate full-retrain coupling effects.
+\emph{External}: MF and NeuMF are simpler than production systems (transformers, graph neural networks). We expect our findings to \emph{strengthen} with deeper architectures, but this remains to be validated. Our two datasets span different domains and sparsity levels but both use explicit ratings; implicit-feedback systems may behave differently.
 
 \paragraph{Limitations.}
 Our reachability budget ($B = 20$) is conservative; higher budgets would likely increase reachability rates. ODR thresholds at population medians are a natural choice but not the only valid one; sensitivity analysis across threshold percentiles is left to future work. CausalLens currently requires model-level access (white-box or retrain-capable); pure API-only auditing with no retrain capability remains an open challenge.
