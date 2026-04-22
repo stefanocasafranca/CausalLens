@@ -1,15 +1,15 @@
-"""Observational Deception Rate (ODR) — Definition 4 from the spec.
+"""Observational Deception Rate (ODR) — Definition 4.
 
 Of users who LOOK autonomous by observational metrics (diversity, coverage,
 volatility), what percentage are actually trapped when tested causally.
 
 ODR = count(deceptive) / count(observationally flagged as autonomous)
 
-A user is "observationally autonomous" if they score above the population
-median on diversity AND volatility.
+A user is "observationally autonomous" if they score strictly above the
+population median on diversity AND volatility.
 
-A user is "causally trapped" if their reachability cost is high (above
-median) — meaning they cannot easily change their recommendations.
+A user is "causally trapped" if their reachability success rate is zero —
+meaning none of the target items could be pushed into top-k within budget.
 
 "Deceptive" = observationally autonomous AND causally trapped.
 """
@@ -36,9 +36,9 @@ def observational_deception_rate(
 
     Steps:
     1. Compute observational metrics (diversity, volatility) for all users.
-    2. Flag users above population median on BOTH as "observationally autonomous".
+    2. Flag users strictly above population median on BOTH as "observationally autonomous".
     3. Compute reachability cost for flagged users.
-    4. Users with mean reachability cost above median are "causally trapped".
+    4. Users with zero reachability successes (all targets unreachable) are "causally trapped".
     5. ODR = count(trapped AND flagged) / count(flagged).
 
     Args:
@@ -68,7 +68,7 @@ def observational_deception_rate(
     # Step 2: Flag observationally autonomous
     flagged = [
         uid for uid in user_ids
-        if diversities[uid] >= div_median and volatilities[uid] >= vol_median
+        if diversities[uid] > div_median and volatilities[uid] > vol_median
     ]
 
     if len(flagged) == 0:
@@ -83,6 +83,7 @@ def observational_deception_rate(
         }
 
     # Step 3: Reachability for flagged users
+    reach_successes = {}
     reach_costs = {}
     for uid in flagged:
         current_topk = set(
@@ -91,7 +92,8 @@ def observational_deception_rate(
         unrated = np.where(rating_matrix[uid] == 0)[0]
         available = [i for i in unrated if i not in current_topk]
         if len(available) == 0:
-            reach_costs[uid] = max_budget  # Treat as trapped
+            reach_successes[uid] = 0
+            reach_costs[uid] = max_budget
             continue
 
         targets = np.random.choice(
@@ -101,20 +103,21 @@ def observational_deception_rate(
         )
 
         costs = []
+        successes = 0
         for target in targets:
             result = reachability_cost(
                 recommender, uid, int(target), rating_matrix,
                 k=k, max_budget=max_budget, mode=reachability_mode,
             )
             costs.append(result["cost"])
+            if result["cost"] < max_budget:
+                successes += 1
+        reach_successes[uid] = successes
         reach_costs[uid] = float(np.mean(costs))
 
-    # Step 4: Threshold at median reachability cost
-    cost_values = np.array(list(reach_costs.values()))
-    cost_median = float(np.median(cost_values))
-
-    # "Deceptive" = flagged as autonomous BUT causally trapped (high reachability)
-    deceptive = [uid for uid in flagged if reach_costs[uid] >= cost_median]
+    # Step 4: Causally trapped = zero reachability successes
+    # "Deceptive" = flagged as autonomous BUT causally trapped
+    deceptive = [uid for uid in flagged if reach_successes[uid] == 0]
 
     # Step 5: ODR
     odr = len(deceptive) / len(flagged)
@@ -126,6 +129,7 @@ def observational_deception_rate(
             "diversity": diversities[uid],
             "volatility": volatilities[uid],
             "mean_reachability_cost": reach_costs[uid],
+            "reachability_successes": reach_successes[uid],
             "is_deceptive": uid in deceptive,
         })
 
@@ -136,6 +140,5 @@ def observational_deception_rate(
         "n_total": len(user_ids),
         "div_median": div_median,
         "vol_median": vol_median,
-        "cost_median": cost_median,
         "details": details,
     }

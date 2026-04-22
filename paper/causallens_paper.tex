@@ -178,7 +178,7 @@ The end-to-end audit pipeline: load data $\rightarrow$ train model $\rightarrow$
 \paragraph{Models.}
 We evaluate two architectures implemented from scratch within CausalLens:
 \begin{itemize}
-    \item \textbf{Matrix Factorization (MF)}~\cite{koren2009matrix}: 64-dimensional user/item factors trained with SGD for 20 epochs (batch size 1024). MF's linear structure provides a simpler baseline: adversary perturbations trigger 25-step warm-start retrains of shared factors, but the linear model limits how far cross-user effects propagate compared to deeper architectures.
+    \item \textbf{Matrix Factorization (MF)}~\cite{koren2009matrix}: 64-dimensional user/item factors trained with Adam for 20 epochs (batch size 1024). MF's linear structure provides a simpler baseline: adversary perturbations trigger 25-step warm-start retrains of shared factors, but the linear model limits how far cross-user effects propagate compared to deeper architectures.
     \item \textbf{Neural Collaborative Filtering (NeuMF)}~\cite{he2017neural}: GMF (32-dim) + MLP (64$\to$32$\to$16) dual-path architecture, 15 epochs, batch size 1024. NeuMF shares item embeddings across users; adversary perturbations trigger 25-step warm-start retrains of shared parameters, creating measurable cross-user coupling.
 \end{itemize}
 
