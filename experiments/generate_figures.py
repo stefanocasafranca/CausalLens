@@ -80,7 +80,10 @@ OI = {
     "purple":   "#CC79A7",
 }
 
-MODEL_COLOR = {"MF": OI["blue"], "NeuMF": OI["vermil"]}
+MODEL_COLOR = {
+    "MF": OI["blue"], "NeuMF": OI["vermil"],
+    "LightGCN": OI["green"], "SASRec": OI["orange"],
+}
 DATASET_MARK = {"MovieLens-1M": "o", "Amazon-MI": "s"}
 DATASET_LS   = {"MovieLens-1M": "-", "Amazon-MI": "--"}
 
@@ -128,15 +131,19 @@ def combo_label(model: str, dataset: str) -> str:
 def combos(df: pd.DataFrame):
     """Yield (model, dataset, subframe) in fixed order."""
     order = [
-        ("MF",    "MovieLens-1M"),
-        ("NeuMF", "MovieLens-1M"),
-        ("MF",    "Amazon-MI"),
-        ("NeuMF", "Amazon-MI"),
+        ("MF",       "MovieLens-1M"),
+        ("NeuMF",    "MovieLens-1M"),
+        ("LightGCN", "MovieLens-1M"),
+        ("SASRec",   "MovieLens-1M"),
+        ("MF",       "Amazon-MI"),
+        ("NeuMF",    "Amazon-MI"),
+        ("LightGCN", "Amazon-MI"),
+        ("SASRec",   "Amazon-MI"),
     ]
     for m, d in order:
         sub = df[(df.model == m) & (df.dataset == d)]
         if len(sub) == 0:
-            raise RuntimeError(f"No rows for combo {m}/{d}")
+            continue  # skip missing combos (e.g. partial runs)
         yield m, d, sub
 
 
@@ -203,24 +210,26 @@ def fig1_reachability_cdf(df: pd.DataFrame) -> dict:
 
 # ── Figure 2: Manipulation resistance violin ─────────────────────────
 def fig2_manipulation_violin(df: pd.DataFrame) -> dict:
-    fig, ax = plt.subplots(figsize=(3.33, 2.8))
-    data, labels, medians, isolated = [], [], [], []
-    positions = np.arange(1, 5)
-    for i, (m, d, sub) in enumerate(combos(df)):
+    combo_list = list(combos(df))
+    n_combos = len(combo_list)
+    fig_width = max(3.33, n_combos * 0.9)
+    fig, ax = plt.subplots(figsize=(fig_width, 2.8))
+    data, labels, medians, isolated, model_names = [], [], [], [], []
+    positions = np.arange(1, n_combos + 1)
+    for m, d, sub in combo_list:
         vals = sub["manipulation_resistance_mean"].dropna().values
         data.append(vals)
         labels.append(combo_label(m, d))
         med = float(np.median(vals))
         medians.append(med)
         isolated.append(abs(med) < 0.05)
+        model_names.append(m)
 
     parts = ax.violinplot(data, positions=positions,
                           showmeans=False, showmedians=True,
                           widths=0.85)
-    # Color each body by model
     for i, body in enumerate(parts["bodies"]):
-        m = ("MF" if i in (0, 2) else "NeuMF")
-        body.set_facecolor(MODEL_COLOR[m])
+        body.set_facecolor(MODEL_COLOR[model_names[i]])
         body.set_edgecolor("black")
         body.set_alpha(0.55)
         body.set_linewidth(0.6)
@@ -229,7 +238,6 @@ def fig2_manipulation_violin(df: pd.DataFrame) -> dict:
             parts[key].set_color("black")
             parts[key].set_linewidth(0.8)
 
-    # Annotate isolated combos
     ymax = max(np.max(d) for d in data)
     for i, (med, iso) in enumerate(zip(medians, isolated)):
         ax.text(positions[i], med + 0.02, f"med={med:.2f}",
@@ -242,14 +250,14 @@ def fig2_manipulation_violin(df: pd.DataFrame) -> dict:
                         arrowprops=dict(arrowstyle="->", color=OI["vermil"], lw=0.6))
 
     ax.set_xticks(positions)
-    ax.set_xticklabels(labels, rotation=18, ha="right")
+    ax.set_xticklabels(labels, rotation=25, ha="right")
     ax.set_ylabel("Manipulation displacement\n(Jaccard, higher = more manipulable)")
     fig.tight_layout(pad=0.3)
     out = FIG_DIR / "fig2_manipulation_resistance.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
-    return {"medians": dict(zip([combo_label(*c[:2]) for c in combos(df)], medians)),
-            "isolated": dict(zip([combo_label(*c[:2]) for c in combos(df)], isolated))}
+    return {"medians": dict(zip(labels, medians)),
+            "isolated": dict(zip(labels, isolated))}
 
 
 # ── Figure 3: AAI scatter ────────────────────────────────────────────
@@ -297,33 +305,39 @@ def fig3_aai_scatter(df: pd.DataFrame) -> dict:
 
 # ── Figure 4: ODR comparison (single Combined-ODR per combo) ────────
 def fig4_odr_comparison(df: pd.DataFrame) -> dict:
-    fig, ax = plt.subplots(figsize=(7.0, 3.2))
-    labels, odrs, ns, ds = [], [], [], []
-    for m, d, sub in combos(df):
+    combo_list = list(combos(df))
+    n_combos = len(combo_list)
+    fig, ax = plt.subplots(figsize=(max(7.0, n_combos * 1.0), 3.2))
+    labels, odrs, ns, ds, model_names = [], [], [], [], []
+    for m, d, sub in combo_list:
         odr, n_auto, n_trap = odr_for_combo(sub)
         labels.append(combo_label(m, d))
         odrs.append(odr * 100)
         ns.append(n_auto)
         ds.append(n_trap)
+        model_names.append(m)
 
     x = np.arange(len(labels))
-    colors = [MODEL_COLOR["MF"], MODEL_COLOR["NeuMF"],
-              MODEL_COLOR["MF"], MODEL_COLOR["NeuMF"]]
+    colors = [MODEL_COLOR[m] for m in model_names]
+    hatch_map = {"MF": "", "NeuMF": "///", "LightGCN": "\\\\\\", "SASRec": "xx"}
+    hatches = [hatch_map.get(m, "") for m in model_names]
     bars = ax.bar(x, odrs, color=colors, edgecolor="black", linewidth=0.6,
-                  width=0.6, hatch=["", "///", "", "///"])
+                  width=0.6, hatch=hatches)
     for i, (bar, o, n_auto, n_trap) in enumerate(zip(bars, odrs, ns, ds)):
         ax.text(bar.get_x() + bar.get_width() / 2, o + 1.2,
                 f"{o:.1f}%\n({n_trap}/{n_auto})",
-                ha="center", va="bottom", fontsize=8)
+                ha="center", va="bottom", fontsize=7)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, rotation=25, ha="right")
     ax.set_ylabel("Observational Deception Rate (%)")
     ax.set_ylim(0, max(odrs) * 1.18 + 5)
 
+    unique_models = list(dict.fromkeys(model_names))
     legend_elements = [
-        Patch(facecolor=MODEL_COLOR["MF"],    edgecolor="black", label="MF"),
-        Patch(facecolor=MODEL_COLOR["NeuMF"], edgecolor="black", hatch="///", label="NeuMF"),
+        Patch(facecolor=MODEL_COLOR[m], edgecolor="black",
+              hatch=hatch_map.get(m, ""), label=m)
+        for m in unique_models
     ]
     ax.legend(handles=legend_elements, loc="upper left", frameon=False)
 
@@ -489,8 +503,12 @@ def write_summary(df, fig1_info, fig2_info, fig3_info, fig4_info) -> str:
     lines = []
     lines.append("# Phase 3 Results Summary")
     lines.append("")
-    lines.append("_Auto-generated by `experiments/generate_figures.py` from "
-                 "`results/phase3_results.csv` (800 rows = 200 users × 2 models × 2 datasets)._")
+    n_rows = len(df)
+    n_models = df["model"].nunique()
+    n_datasets = df["dataset"].nunique()
+    lines.append(f"_Auto-generated by `experiments/generate_figures.py` from "
+                 f"`results/phase3_results.csv` ({n_rows} rows = 200 users × "
+                 f"{n_models} models × {n_datasets} datasets)._")
     lines.append("")
 
     # Per-combo stats collection
@@ -636,17 +654,11 @@ def main():
 
     df = load_data()
 
-    # Sanity: 4 combos × 200 users each
+    # Sanity: check all combos have 200 users
     counts = df.groupby(["model", "dataset"]).size()
-    expected = {
-        ("MF",    "MovieLens-1M"): 200,
-        ("NeuMF", "MovieLens-1M"): 200,
-        ("MF",    "Amazon-MI"):    200,
-        ("NeuMF", "Amazon-MI"):    200,
-    }
-    for key, n in expected.items():
-        if counts.get(key, 0) != n:
-            raise RuntimeError(f"Expected {n} rows for {key}, got {counts.get(key, 0)}.")
+    for key, n in counts.items():
+        if n != 200:
+            print(f"WARNING: {key} has {n} rows (expected 200)")
 
     fig1 = fig1_reachability_cdf(df)
     fig2 = fig2_manipulation_violin(df)

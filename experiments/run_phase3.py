@@ -1,8 +1,8 @@
-"""Phase 3: Full experiment pipeline — 2 models × 2 datasets × 200 users.
+"""Phase 3: Full experiment pipeline — 4 models × 2 datasets × 200 users.
 
-Runs MF and NeuMF on MovieLens-1M and Amazon Digital Music with all metrics:
-reachability, manipulation resistance, AAI, observational baselines, ODR.
-Saves per-user results to CSV, prints summary table.
+Runs MF, NeuMF, LightGCN, and SASRec on MovieLens-1M and Amazon Digital
+Music with all metrics: reachability, manipulation resistance, AAI,
+observational baselines, ODR.  Saves per-user results to CSV.
 
 Usage:
     PYTHONPATH=. python experiments/run_phase3.py
@@ -29,6 +29,8 @@ from causallens.data.movielens import load_movielens_1m
 from causallens.data.amazon import load_amazon_digital_music
 from causallens.models.mf import MatrixFactorization
 from causallens.models.neumf import NeuMF
+from causallens.models.lightgcn import LightGCN
+from causallens.models.sasrec import SASRec
 from causallens.metrics.observational import (
     intra_list_diversity,
     recommendation_volatility,
@@ -43,14 +45,14 @@ N_REACHABILITY_TARGETS = 5
 N_ADVERSARIES = 3
 REACHABILITY_MAX_BUDGET = 20
 REACHABILITY_TRIALS = 50       # random search trials (same solver for all models)
-MANIPULATION_TRIALS = 10       # MF manipulation trials
-SELF_INFLUENCE_TRIALS = 15     # MF self-influence trials
-# Reduced NeuMF-specific trials to keep per-user time under 2 min
-NEUMF_MANIPULATION_TRIALS = 8
-NEUMF_SELF_INFLUENCE_TRIALS = 10
-NEUMF_USER_TIMEOUT = 180     # seconds per user (safety net, may not fire in C code)
+MANIPULATION_TRIALS = 10       # default manipulation trials
+SELF_INFLUENCE_TRIALS = 15     # default self-influence trials
+# Per-model trial overrides (heavier models get fewer trials to keep runtime bounded)
+MODEL_MANIPULATION_TRIALS = {"MF": 10, "NeuMF": 8, "LightGCN": 8, "SASRec": 8}
+MODEL_SELF_INFLUENCE_TRIALS = {"MF": 15, "NeuMF": 10, "LightGCN": 10, "SASRec": 10}
+USER_TIMEOUT = 180           # seconds per user (safety net)
 CSV_PATH = "results/phase3_results.csv"
-MAX_TOTAL_HOURS = 4.0
+MAX_TOTAL_HOURS = 8.0        # raised for 4 models × 2 datasets
 
 # ── Timeout helper ────────────────────────────────────────────────────
 
@@ -195,10 +197,10 @@ def compute_user_metrics(
     model, model_name, uid, R, all_user_ids, n_users,
 ):
     """Compute all per-user metrics. Returns a dict."""
-    # For NeuMF, wrap entire computation in a timeout
+    # For non-MF models, wrap entire computation in a timeout
     if model_name != "MF":
         signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(NEUMF_USER_TIMEOUT)
+        signal.alarm(USER_TIMEOUT)
         try:
             result = _compute_user_metrics_inner(model, model_name, uid, R, all_user_ids, n_users)
             signal.alarm(0)
@@ -248,7 +250,7 @@ def _compute_user_metrics_inner(
     else:
         adversaries = np.random.choice(other_users, N_ADVERSARIES, replace=False).tolist()
 
-    n_manip_trials = NEUMF_MANIPULATION_TRIALS if model_name == "NeuMF" else MANIPULATION_TRIALS
+    n_manip_trials = MODEL_MANIPULATION_TRIALS.get(model_name, MANIPULATION_TRIALS)
     displacements = []
     for aid in adversaries:
         mr = manipulation_random_search(
@@ -261,7 +263,7 @@ def _compute_user_metrics_inner(
     result["external_influence"] = float(np.max(displacements))
 
     # --- Self-influence ---
-    n_self_trials = NEUMF_SELF_INFLUENCE_TRIALS if model_name == "NeuMF" else SELF_INFLUENCE_TRIALS
+    n_self_trials = MODEL_SELF_INFLUENCE_TRIALS.get(model_name, SELF_INFLUENCE_TRIALS)
     s = self_influence_random_search(
         model, uid, R, k=K, epsilon=EPSILON,
         n_trials=n_self_trials,
@@ -442,6 +444,17 @@ def run_experiment():
                     n_epochs=15, batch_size=1024,
                     retrain_steps=25, finetune_steps=15,
                 )),
+                ("LightGCN", lambda: LightGCN(
+                    n_u, n_i, embed_dim=64, n_layers=3,
+                    n_epochs=20, batch_size=2048,
+                    retrain_steps=25,
+                )),
+                ("SASRec", lambda: SASRec(
+                    n_u, n_i, embed_dim=64, n_heads=2,
+                    n_layers=2, max_seq_len=50,
+                    n_epochs=30, batch_size=256,
+                    retrain_steps=25,
+                )),
             ]
 
             for model_name, model_factory in models:
@@ -593,7 +606,7 @@ def run_experiment():
                 if not first_combo_done:
                     first_combo_done = True
                     elapsed_total = time.time() - t_global
-                    projected = elapsed_total * 4  # 4 combos total
+                    projected = elapsed_total * 8  # 4 models × 2 datasets
                     if projected > MAX_TOTAL_HOURS * 3600:
                         new_n = max(100, n_users // 2)
                         if new_n < n_users:

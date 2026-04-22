@@ -19,8 +19,12 @@ CSV_PATH = ROOT / "results" / "phase3_results.csv"
 COMBOS = [
     ("MF", "MovieLens-1M"),
     ("NeuMF", "MovieLens-1M"),
+    ("LightGCN", "MovieLens-1M"),
+    ("SASRec", "MovieLens-1M"),
     ("MF", "Amazon-MI"),
     ("NeuMF", "Amazon-MI"),
+    ("LightGCN", "Amazon-MI"),
+    ("SASRec", "Amazon-MI"),
 ]
 
 
