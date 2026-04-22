@@ -257,21 +257,27 @@ def fig3_aai_scatter(df: pd.DataFrame) -> dict:
     fig, ax = plt.subplots(figsize=(7.0, 3.3))
     xmax = max(df["self_influence"].max(), df["external_influence"].max()) * 1.05
 
-    # Shade captured region
+    # Shade captured region (above diagonal = AAI > 1)
     ax.fill_between([0, xmax], [0, xmax], [xmax, xmax],
-                    color=OI["vermil"], alpha=0.08, zorder=0)
-    ax.text(xmax * 0.70, xmax * 0.90, "captured (AAI>1)",
-            fontsize=8, color=OI["vermil"], alpha=0.85)
+                    color=OI["vermil"], alpha=0.06, zorder=0)
+    # Place label in clear upper-left of the shaded region, no data overlap
+    ax.text(0.08, xmax * 0.94, "AAI > 1\n(adversary dominates)",
+            fontsize=7.5, color=OI["vermil"], alpha=0.9,
+            fontstyle="italic", va="top")
 
-    # Diagonal
+    # Diagonal reference line
     ax.plot([0, xmax], [0, xmax], color="black", lw=0.8, ls=":", zorder=1,
             label="AAI = 1")
 
+    # Jitter to reveal overlapping points on the discrete Jaccard grid
+    jitter_std = 0.012
     above = {}
     for m, d, sub in combos(df):
-        ax.scatter(sub["self_influence"], sub["external_influence"],
+        jx = sub["self_influence"] + np.random.normal(0, jitter_std, len(sub))
+        jy = sub["external_influence"] + np.random.normal(0, jitter_std, len(sub))
+        ax.scatter(jx, jy,
                    c=MODEL_COLOR[m], marker=DATASET_MARK[d],
-                   s=12, alpha=0.55, edgecolors="none",
+                   s=14, alpha=0.50, edgecolors="white", linewidths=0.3,
                    label=combo_label(m, d), zorder=2)
         above[combo_label(m, d)] = aai_above_diag_pct(sub)
 
@@ -279,8 +285,9 @@ def fig3_aai_scatter(df: pd.DataFrame) -> dict:
     ax.set_ylim(0, xmax)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("Self-influence (user's own-rating displacement)")
-    ax.set_ylabel("External influence (adversary displacement)")
-    ax.legend(loc="upper left", frameon=False, ncol=1)
+    ax.set_ylabel("External influence\n(adversary displacement)")
+    ax.legend(loc="lower right", frameon=True, framealpha=0.9,
+              edgecolor="0.8", ncol=1, fontsize=7.5)
     fig.tight_layout(pad=0.3)
     out = FIG_DIR / "fig3_aai_scatter.pdf"
     fig.savefig(out, bbox_inches="tight")
@@ -349,9 +356,10 @@ def table1_main_results(df: pd.DataFrame) -> str:
     tex.append(r"\begin{table}[t]")
     tex.append(r"\centering")
     tex.append(r"\small")
+    tex.append(r"\resizebox{\columnwidth}{!}{%")
     tex.append(r"\begin{tabular}{lrcccr}")
     tex.append(r"\toprule")
-    tex.append(r"Model / Dataset & $N$ & Reachability cost & Manip.\ displacement & AAI & ODR (\%) \\")
+    tex.append(r"Model / Dataset & $N$ & Reach.\ cost & Manip.\ disp. & AAI & ODR (\%) \\")
     tex.append(r" & & (mean $\pm$ std) & (mean $\pm$ std) & (mean $\pm$ std) & \\")
     tex.append(r"\midrule")
     for r in rows:
@@ -363,14 +371,13 @@ def table1_main_results(df: pd.DataFrame) -> str:
             f"{r['odr']:.1f} \\\\"
         )
     tex.append(r"\bottomrule")
-    tex.append(r"\end{tabular}")
+    tex.append(r"\end{tabular}}")
     tex.append(r"\caption{Main results across architectures and datasets. NeuMF exhibits "
                r"substantially higher manipulation displacement than MF, confirming "
                r"cross-user coupling through shared neural embeddings. Reachability cost "
                r"is reported over finite-cost users only (users with no target reached "
-               r"within budget are excluded from the mean; counts are: "
-               + ", ".join(f"{r['combo']} $n_\\infty={r['r_inf']}$" for r in rows)
-               + r"). ODR denominators (observationally autonomous users per combo) are: "
+               r"within budget are excluded from the mean). "
+               r"ODR denominators (observationally autonomous users): "
                + ", ".join(f"{r['combo']} {r['n_trap']}/{r['n_auto']}" for r in rows) + ".}")
     tex.append(r"\label{tab:main-results}")
     tex.append(r"\end{table}")
@@ -397,9 +404,10 @@ def table2_odr_breakdown(df: pd.DataFrame) -> str:
     tex.append(r"\begin{table}[t]")
     tex.append(r"\centering")
     tex.append(r"\small")
+    tex.append(r"\resizebox{\columnwidth}{!}{%")
     tex.append(r"\begin{tabular}{lcccr}")
     tex.append(r"\toprule")
-    tex.append(r"Model / Dataset & ILD (mean) & Catalog coverage & Volatility (mean) & Combined-ODR (\%) \\")
+    tex.append(r"Model / Dataset & ILD (mean) & Coverage & Volatility (mean) & ODR (\%) \\")
     tex.append(r"\midrule")
     for r in rows:
         tex.append(
@@ -410,16 +418,13 @@ def table2_odr_breakdown(df: pd.DataFrame) -> str:
             f"{r['odr']:.1f} \\\\"
         )
     tex.append(r"\bottomrule")
-    tex.append(r"\end{tabular}")
-    tex.append(r"\caption{Observational baselines and Observational Deception Rate per combo. "
-               r"Intra-list diversity (ILD) and volatility are per-user means; catalog "
-               r"coverage is population-level (constant within a combo). Combined-ODR is the "
-               r"fraction of users flagged \emph{observationally autonomous} "
-               r"(diversity $>$ median AND volatility $>$ median, within combo) who "
-               r"nonetheless fail the causal reachability test "
-               r"(\texttt{success\_rate}=0). Per-baseline ODR breakdown (ILD-ODR, "
-               r"Coverage-ODR, Volatility-ODR) is not recorded in the experiment CSV; "
-               r"only the Combined-ODR is reported here.}")
+    tex.append(r"\end{tabular}}")
+    tex.append(r"\caption{Observational baselines and ODR per combination. "
+               r"ILD and volatility are per-user means; catalog "
+               r"coverage is population-level. ODR is the "
+               r"fraction of users flagged observationally autonomous "
+               r"(diversity ${>}$ median AND volatility ${>}$ median, within combo) who "
+               r"fail the causal reachability test (zero successes).}")
     tex.append(r"\label{tab:odr-breakdown}")
     tex.append(r"\end{table}")
     content = "\n".join(tex) + "\n"

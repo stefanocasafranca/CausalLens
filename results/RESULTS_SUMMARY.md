@@ -42,10 +42,6 @@ Summary statistics across all 800 users: sample size, reachability cost (over fi
 
 Per-combo observational baselines (ILD, catalog coverage, volatility) alongside Combined-ODR. Note that the experiment CSV records only the Combined-ODR label per user (`deceptive` column = autonomous $\wedge$ trapped); true per-baseline ODR (ILD-ODR, Coverage-ODR, Volatility-ODR) would require re-running Phase 3 with per-baseline autonomy flags recorded.
 
-## Reachability Framing
-
-12.4% of users (99/800) are reachable within budget-20; among reachable users, NeuMF requires fewer flips (mean 8.87) than MF (mean 18.93). The conservative budget reflects realistic attacker constraints — most users' target items sit far outside the top-k, making them genuinely unreachable with limited perturbation. The high unreachability rate (87.6%) is itself an important finding: it demonstrates that reachability cost is a stringent metric that separates truly manipulable recommendation paths from structurally robust ones. Per-combo unreachable counts: MF/ML-1M 150/200 (75.0%), NeuMF/ML-1M 191/200 (95.5%), MF/Amazon-MI 166/200 (83.0%), NeuMF/Amazon-MI 194/200 (97.0%).
-
 ## Data Anomalies
 
 - `reachability_mean` has 701 infinite values (MF / ML-1M=150; NeuMF / ML-1M=191; MF / Amazon-MI=166; NeuMF / Amazon-MI=194). These indicate targets unreachable within the reachability budget; they are excluded from numerical statistics but counted explicitly where relevant.
