@@ -150,6 +150,29 @@ def main():
 
     print()
     print("=" * 78)
+    print("BASE UNREACHABILITY vs ODR + CHI-SQUARED INDEPENDENCE TEST")
+    print("=" * 78)
+    from scipy.stats import chi2_contingency
+    for m, d in COMBOS:
+        sub = df[(df.model == m) & (df.dataset == d)]
+        base_trapped = int((sub["reachability_success_rate"] == 0).sum())
+        base_rate = base_trapped / len(sub)
+        n_trap, n_auto = odr_for_combo(sub)
+        odr_val = n_trap / n_auto if n_auto > 0 else 0
+        med_div = float(np.median(sub["diversity"]))
+        med_vol = float(np.median(sub["volatility"]))
+        auto = (sub["diversity"] > med_div) & (sub["volatility"] > med_vol)
+        trapped = sub["reachability_success_rate"] == 0
+        a = int(( auto & trapped).sum())
+        b = int(( auto & ~trapped).sum())
+        c = int((~auto & trapped).sum())
+        dd = int((~auto & ~trapped).sum())
+        chi2, p, _, _ = chi2_contingency([[a,b],[c,dd]])
+        print(f"  {combo_label(m, d):25s}  base={100*base_rate:.1f}%  ODR={100*odr_val:.1f}%  "
+              f"ratio={odr_val/base_rate:.2f}x  chi2={chi2:.2f}  p={p:.4f}")
+
+    print()
+    print("=" * 78)
     print("ODR THRESHOLD SENSITIVITY (percentile sweep)")
     print("=" * 78)
     for pct in [25, 50, 75, 90]:
