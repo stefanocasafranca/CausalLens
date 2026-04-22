@@ -2,17 +2,17 @@
 \centering
 \small
 \resizebox{\columnwidth}{!}{%
-\begin{tabular}{lrcccr}
+\begin{tabular}{lrcccc}
 \toprule
 Model / Dataset & $N$ & Reach.\ cost & Manip.\ disp. & AAI & ODR (\%) \\
- & & (mean $\pm$ std) & (mean $\pm$ std) & (mean $\pm$ std) & \\
+ & & mean [95\% CI] & mean [95\% CI] & mean [95\% CI] & [95\% Wilson CI] \\
 \midrule
-MF / ML-1M & 200 & $19.25 \pm 1.73$ & $0.453 \pm 0.143$ & $0.785 \pm 0.430$ & 68.3 \\
-NeuMF / ML-1M & 200 & $7.89 \pm 5.16$ & $0.518 \pm 0.117$ & $0.733 \pm 0.161$ & 90.4 \\
-MF / Amazon-MI & 200 & $18.46 \pm 3.10$ & $0.576 \pm 0.137$ & $0.681 \pm 0.157$ & 88.0 \\
-NeuMF / Amazon-MI & 200 & $10.33 \pm 5.89$ & $0.772 \pm 0.102$ & $0.841 \pm 0.095$ & 93.9 \\
+MF / ML-1M & 200 & $19.25\,[18.74,\,19.68]$ & $0.453\,[0.434,\,0.473]$ & $0.785\,[0.728,\,0.848]$ & $68.3\,[53.0,\,80.4]$ \\
+NeuMF / ML-1M & 200 & $7.89\,[5.00,\,11.22]$ & $0.518\,[0.501,\,0.534]$ & $0.733\,[0.712,\,0.756]$ & $90.4\,[79.4,\,95.8]$ \\
+MF / Amazon-MI & 200 & $18.46\,[17.33,\,19.37]$ & $0.576\,[0.557,\,0.595]$ & $0.681\,[0.660,\,0.703]$ & $88.0\,[76.2,\,94.4]$ \\
+NeuMF / Amazon-MI & 200 & $10.33\,[6.33,\,15.00]$ & $0.772\,[0.758,\,0.786]$ & $0.841\,[0.828,\,0.854]$ & $93.9\,[83.5,\,97.9]$ \\
 \bottomrule
 \end{tabular}}
-\caption{Main results across architectures and datasets. NeuMF exhibits substantially higher manipulation displacement than MF, confirming cross-user coupling through shared neural embeddings. Reachability cost is reported over finite-cost users only (users with no target reached within budget are excluded from the mean). ODR denominators (observationally autonomous users): MF / ML-1M 28/41, NeuMF / ML-1M 47/52, MF / Amazon-MI 44/50, NeuMF / Amazon-MI 46/49.}
+\caption{Main results across architectures and datasets ($k = 10$, budget $B = 20$, $\varepsilon = 5$). Bootstrap 95\% CIs (10,000 resamples) for continuous metrics; Wilson score intervals for ODR. Reachability cost is over finite-cost users only. ODR denominators: MF/ML-1M 28/41, NeuMF/ML-1M 47/52, MF/Amazon-MI 44/50, NeuMF/Amazon-MI 46/49.}
 \label{tab:main-results}
 \end{table}

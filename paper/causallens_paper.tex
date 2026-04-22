@@ -5,7 +5,7 @@
 %% ACM RecSys 2026  —  acmart sigconf
 %%
 
-\documentclass[sigconf,nonacm=false]{acmart}
+\documentclass[sigconf,anonymous]{acmart}
 
 %% ── packages ────────────────────────────────────────────────────────
 \usepackage{booktabs}
@@ -24,17 +24,14 @@
 %% ── metadata ────────────────────────────────────────────────────────
 \title{CausalLens: An Open-Source Toolkit for Causal Autonomy Auditing of Recommender Systems}
 
-\author{Stefano Casafranca}
+\author{Anonymous Author(s)}
 \affiliation{%
-  \institution{Austin Community College}
-  \city{Austin}
-  \state{Texas}
-  \country{USA}
+  \institution{Anonymous Institution}
 }
-\email{stefano.casafrancalaos@austincc.edu}
+\email{}
 
 \begin{abstract}
-Observational metrics such as intra-list diversity and recommendation volatility are widely used to assess whether recommender systems respect user autonomy. We show these metrics systematically fail: across 800 user evaluations spanning two architectures and two datasets, 68--94\% of users who \emph{appear} autonomous by observational criteria are in fact causally trapped---their recommendations cannot be meaningfully altered by their own actions, yet can be shifted by adversarial manipulation of other users' ratings. We introduce \textbf{CausalLens}, an open-source Python toolkit that operationalizes the causal autonomy auditing framework of Sharma et al.\ (2024) into four computable metrics: Reachability Cost, Manipulation Resistance, Autonomy Asymmetry Index (AAI), and Observational Deception Rate (ODR). CausalLens provides both white-box gradient-based and black-box query-based computation paths, supports any recommender exposing a predict/update interface, and reproduces our full experimental pipeline on a single laptop. Our ablation across Matrix Factorization and Neural Collaborative Filtering reveals that cross-user parameter sharing in neural architectures amplifies manipulation vulnerability by 25.4\% while inflating ODR from 68.3\% to 90.4\% on MovieLens-1M. Code and data are publicly available at \url{https://github.com/stefanocasafranca/CausalLens}.
+Observational metrics such as intra-list diversity and recommendation volatility are widely used to assess whether recommender systems respect user autonomy. We show these metrics systematically fail: across 800 user evaluations spanning two architectures and two datasets, 68--94\% of users who \emph{appear} autonomous by observational criteria are in fact causally trapped---their recommendations cannot be meaningfully altered by their own actions, yet can be shifted by adversarial manipulation of other users' ratings. We introduce \textbf{CausalLens}, an open-source Python toolkit that operationalizes the causal autonomy auditing framework of Sharma et al.\ (2024) into four computable metrics: Reachability Cost, Manipulation Resistance, Autonomy Asymmetry Index (AAI), and Observational Deception Rate (ODR). CausalLens provides both white-box gradient-based and black-box query-based computation paths, supports any recommender exposing a predict/update interface, and reproduces our full experimental pipeline on a single laptop. Our ablation across Matrix Factorization and Neural Collaborative Filtering reveals that cross-user parameter sharing in neural architectures amplifies manipulation vulnerability by 25.4\% while inflating ODR from 68.3\% to 90.4\% on MovieLens-1M. Code and data are publicly available.\footnote{Anonymous repository: \url{https://anonymous.4open.science/r/CausalLens} (for review only).}
 \end{abstract}
 
 \begin{CCSXML}
@@ -66,9 +63,9 @@ Observational metrics such as intra-list diversity and recommendation volatility
 \label{sec:intro}
 %% ═════════════════════════════════════════════════════════════════════
 
-Recommender systems can propagate influence across users in unexpected ways. Anecdotal reports describe cases where one user's engagement with sensitive content---such as drug-related material---caused related recommendations to appear in a connected user's feed, despite no direct interaction on their part.\footnote{Reports of cross-user recommendation leakage have surfaced on social media platforms and in user advocacy forums, though systematic documentation remains sparse.} No tool existed to measure this cross-user influence, quantify its magnitude, or determine whether the affected user could escape it through their own actions.
+Recommender systems can propagate influence across users in unexpected ways. Calandrino et al.~\cite{calandrino2011you} demonstrated that an observer can infer a target user's private transactions from temporal changes in a recommender's public outputs---a consequence of collaborative filtering's cross-user parameter sharing. More broadly, one user's behavior can alter what another user sees, yet no tool existed to measure this cross-user influence, quantify its magnitude, or determine whether the affected user could escape it through their own actions.
 
-This incident illustrates a fundamental limitation of current recommender system auditing. Regulators and researchers rely on \emph{observational} metrics---diversity of recommended items, catalog coverage, recommendation volatility---to assess whether systems respect user autonomy~\cite{eu_dsa2022, ge2010beyond, zhang2008avoiding}. These metrics capture surface-level properties of recommendation lists but cannot distinguish between a user who genuinely controls their feed and one whose apparent autonomy is an artifact of the system's internal dynamics.
+This cross-user influence channel illustrates a fundamental limitation of current recommender system auditing. Regulators and researchers rely on \emph{observational} metrics---diversity of recommended items, catalog coverage, recommendation volatility---to assess whether systems respect user autonomy~\cite{eu_dsa2022, ge2010beyond, zhang2008avoiding}. These metrics capture surface-level properties of recommendation lists but cannot distinguish between a user who genuinely controls their feed and one whose apparent autonomy is an artifact of the system's internal dynamics.
 
 Sharma et al.~\cite{sharma2024unified} formalized this distinction through a causal framework for auditing recommender systems, defining metrics grounded in interventional reasoning: what happens when a user \emph{tries} to change their recommendations, and what happens when an adversary \emph{tries} to change them for someone else. Their framework provides the theoretical foundation, but no reproducible implementation exists.
 
@@ -93,7 +90,7 @@ Sharma et al.~\cite{sharma2024unified} proposed a unified causal framework for a
 Dean et al.~\cite{dean2020recommendations} introduced the concept of reachability in collaborative filtering, asking whether users can reach arbitrary items through rating changes. Curmei et al.~\cite{curmei2021towards} extended this with psychologically-grounded preference dynamics. CausalLens builds on these foundations by (i) coupling reachability with adversarial manipulation resistance into a unified audit, and (ii) introducing the ODR metric that exposes the gap between observational and causal assessments.
 
 \paragraph{Steerability and user agency.}
-Recent work has examined the steerability of recommender systems from complementary angles. Steerability evaluations for natural language-profile recommenders measure whether users can direct recommendations through explicit preference statements, but do not address cross-user manipulation or provide general-purpose auditing toolkits. Design-oriented research on user empowerment in algorithmic systems has proposed interface-level interventions for user agency, but focuses on qualitative design rather than quantitative causal measurement.
+Recent work has examined steerability from complementary angles. Tsai and Brusilovsky~\cite{tsai2021controllability} studied the effects of user controllability in social recommender systems, finding that interactive controls improve perceived quality. Jannach et al.~\cite{jannach2017user} surveyed user control mechanisms in recommender interfaces. These approaches focus on interface-level interventions rather than quantitative measurement of whether a user's actions \emph{actually change} the underlying recommendations---the question CausalLens addresses.
 
 \paragraph{Regulatory auditing.}
 The EU Digital Services Act~\cite{eu_dsa2022} requires platforms to assess systemic risks including effects on fundamental rights, creating demand for rigorous auditing methodology. Early analyses of platform audit reports have identified significant methodological gaps in how algorithmic influence is assessed---gaps that CausalLens addresses with concrete causal tooling.
@@ -101,11 +98,16 @@ The EU Digital Services Act~\cite{eu_dsa2022} requires platforms to assess syste
 \paragraph{Observational metrics.}
 Intra-list diversity~\cite{zhang2008avoiding}, catalog coverage~\cite{ge2010beyond}, and recommendation volatility are standard beyond-accuracy metrics. Our ODR metric demonstrates that these observational indicators can be systematically misleading as proxies for user autonomy.
 
+\paragraph{Cross-user dynamics.}
+Chaney et al.~\cite{chaney2018algorithmic} demonstrated that collaborative filtering creates feedback loops amplifying homogeneity across users---an effect our manipulation resistance metric quantifies at the individual level. Mansoury et al.~\cite{mansoury2020feedback} showed that such loops systematically bias recommendation outputs over time. CausalLens complements these population-level observations with per-user causal measurements of cross-user influence.
+
 
 %% ═════════════════════════════════════════════════════════════════════
 \section{Formal Definitions}
 \label{sec:definitions}
 %% ═════════════════════════════════════════════════════════════════════
+
+Our operationalization approximates causal interventions through controlled perturbation and retraining. Rather than constructing an explicit structural causal model with identified confounders, we simulate $do$-interventions by modifying a user's ratings (or an adversary's ratings) and measuring the downstream effect on recommendations after model update. This perturbation-based approach provides a tractable approximation to the interventional quantities defined by Sharma et al.~\cite{sharma2024unified}, trading full causal identification for computational feasibility and model-agnostic applicability. Our metrics measure \emph{perturbation sensitivity under controlled retraining}, which lower-bounds the true causal effect.
 
 Let $\mathcal{U} = \{1, \ldots, n\}$ be the set of users, $\mathcal{V} = \{1, \ldots, m\}$ the set of items, $\mathbf{r}_i \in \mathbb{R}^m$ user $i$'s rating vector, $R \in \mathbb{R}^{n \times m}$ the full rating matrix, $f$ the recommender function, $\text{top-}k(f, i)$ the set of $k$ recommended items for user $i$, and $d(\cdot, \cdot)$ the Jaccard distance between two top-$k$ sets.
 
@@ -152,6 +154,8 @@ Let $\mathcal{A} \subset \mathcal{U}$ be the set of users flagged as autonomous 
 
 \noindent \textbf{Intuition.} ODR measures the fraction of users who \emph{look} autonomous by standard metrics but cannot change their recommendations through their own actions. High ODR means observational auditing systematically fails to detect causal entrapment.
 
+We say a user is \textit{causally trapped} if their reachability success rate is zero under budget~$B$---no target item can be placed into their top-$k$ through any combination of up to~$B$ rating changes. This is a budget-relative property: a user trapped under $B = 20$ may become reachable under a larger budget.
+
 
 %% ═════════════════════════════════════════════════════════════════════
 \section{System Design}
@@ -196,7 +200,10 @@ We evaluate two architectures implemented from scratch within CausalLens:
 For each of the four model--dataset combinations, we sample 200 users with $\geq 20$ ratings ($N = 800$ total evaluations). Per user: 5 reachability targets (random unrated items outside current top-$k$) with budget $B = 20$ rating changes and 50 gradient steps (MF) or 20 random-search trials (NeuMF); 3 random adversaries with budget $\varepsilon = 5$; self-influence with budget $\varepsilon = 5$. Observational autonomy thresholds are set at within-combo medians of diversity and volatility. All experiments use $k = 10$ and Jaccard distance.
 
 \paragraph{Budget justification.}
-The reachability budget $B = 20$ reflects a conservative estimate of realistic attacker constraints---a user or adversary altering more than 20 ratings represents a substantial behavioral change. As we show in Section~\ref{sec:results}, this stringent budget means most target items remain unreachable, which is itself an informative finding about the structural rigidity of recommendation paths.
+The reachability budget $B = 20$ represents a substantial behavioral change; Section~\ref{sec:results} shows most targets remain unreachable, which is itself informative about structural rigidity.
+
+\paragraph{Warm-start sensitivity.}
+The 25-step warm-start retrain balances computational cost against coupling fidelity. Fewer steps underestimate cross-user propagation; full retraining to convergence yields an upper bound but is prohibitively expensive at scale ($N \times$ adversary evaluations per user). We report results at 25 steps as a practical middle ground; sensitivity analysis across retrain budgets is planned for the camera-ready version.
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -209,11 +216,13 @@ The reachability budget $B = 20$ reflects a conservative estimate of realistic a
 
 \subsection{Observational Deception Is Pervasive}
 
-The headline finding: across all four model--dataset combinations, a majority of observationally autonomous users are causally trapped (Table~\ref{tab:main-results}). ODR ranges from 68.3\% (MF on ML-1M) to 93.9\% (NeuMF on Amazon-MI). On NeuMF/ML-1M, 47 of 52 users who pass the diversity-and-volatility autonomy screen have zero reachability success---their recommendations cannot be altered by any combination of up to 20 rating changes, yet their feeds \emph{appear} diverse and responsive.
+Across all four model--dataset combinations, a majority of observationally autonomous users are causally trapped (Table~\ref{tab:main-results}). ODR ranges from 68.3\% (MF on ML-1M, 95\% Wilson CI $[53.0, 80.4]$) to 93.9\% (NeuMF on Amazon-MI, $[83.5, 97.9]$). On NeuMF/ML-1M, 47 of 52 users who pass the diversity-and-volatility autonomy screen have zero reachability success---their recommendations cannot be altered by any combination of up to 20 rating changes, yet their feeds \emph{appear} diverse and responsive.
+
+Fisher's exact test confirms the MF--NeuMF ODR difference is significant on ML-1M ($p = 0.009$) but not on Amazon-MI ($p = 0.487$), where both models already exhibit high deception rates (88.0\% vs.\ 93.9\%). ODR remains above 68\% when the observational autonomy threshold is varied from the 25th to the 75th percentile of diversity and volatility, indicating the result is not an artifact of the median-based cutoff.
 
 \subsection{Architecture Determines Vulnerability}
 
-NeuMF exhibits 25.4\% higher mean manipulation displacement than MF (0.645 vs.\ 0.515 across datasets; Mann-Whitney $U = 45{,}452$, $p < 10^{-26}$, rank-biserial $r = 0.43$), confirming that shared neural embeddings create a measurable cross-user coupling channel. The gap is most pronounced on Amazon-MI (median displacement: NeuMF 0.796 vs.\ MF 0.571; Figure~\ref{fig:manipulation}), where the sparser rating matrix amplifies the propagation of adversary perturbations through shared item representations.
+NeuMF exhibits 25.4\% higher mean manipulation displacement than MF (0.645 vs.\ 0.515 across datasets; Mann-Whitney $U = 45{,}452$, $p < 10^{-26}$, rank-biserial $r = 0.43$, a medium-to-large effect). The gap is most pronounced on Amazon-MI ($r = 0.74$, large effect; median displacement: NeuMF 0.796 vs.\ MF 0.571; Figure~\ref{fig:manipulation}), where the sparser rating matrix amplifies the propagation of adversary perturbations through shared item representations. On ML-1M, the effect is moderate ($r = 0.31$).
 
 Both models use warm-start retraining after adversary perturbations to propagate cross-user effects through shared item factors. MF exhibits non-trivial manipulation displacement (mean 0.515 across datasets), but its linear structure inherently limits how much a single adversary's retraining can shift the shared factor space. NeuMF's nonlinear dual-path architecture amplifies these perturbations through deeper parameter entanglement.
 
@@ -251,7 +260,7 @@ Users with AAI ${>}\,1$ (adversary influence exceeds self-influence) are concent
 
 \subsection{ODR Across Architectures and Datasets}
 
-Figure~\ref{fig:odr} shows ODR across all combinations. NeuMF's deception rate exceeds MF's on both datasets (ML-1M: 90.4\% vs.\ 68.3\%; Amazon-MI: 93.9\% vs.\ 88.0\%). The observational baselines (Table~\ref{tab:odr-breakdown}) confirm that NeuMF produces higher diversity (ILD: 0.819--0.999 vs.\ 0.733--0.983) and higher volatility (0.579--0.706 vs.\ 0.128--0.359), which \emph{should} signal greater user autonomy---yet the causal metrics reveal the opposite. This is the core finding: \textbf{deeper architectures with cross-user parameter sharing trap more users while looking observationally benign}.
+Figure~\ref{fig:odr} shows ODR across all combinations. NeuMF's deception rate exceeds MF's on both datasets (ML-1M: 90.4\% vs.\ 68.3\%; Amazon-MI: 93.9\% vs.\ 88.0\%). The observational baselines (Table~\ref{tab:odr-breakdown}) confirm that NeuMF produces higher diversity (ILD: 0.819--0.999 vs.\ 0.733--0.983) and higher volatility (0.579--0.706 vs.\ 0.128--0.359), which \emph{should} signal greater user autonomy---yet the causal metrics reveal the opposite. In summary, deeper architectures with cross-user parameter sharing trap more users while producing higher observational autonomy scores.
 
 \begin{figure*}[t]
     \centering
@@ -273,12 +282,18 @@ Our results challenge the common assumption that diversity and volatility metric
 \paragraph{The architecture matters.}
 The consistent gap between MF and NeuMF across all metrics demonstrates that model architecture is not merely an implementation detail for auditing purposes. Shared parameters create coupling channels invisible to observational metrics. As recommender systems adopt increasingly complex architectures (transformers, graph neural networks), causal auditing becomes more---not less---necessary.
 
+\paragraph{Architecture scope.}
+Our evaluation covers two architectures representing distinct structural classes: MF (linear, user-item factor isolation) and NeuMF (nonlinear, shared embedding coupling). While production systems increasingly use transformers and graph neural networks, the MF--NeuMF comparison isolates the effect of cross-user parameter sharing---the architectural property our metrics are designed to detect. We hypothesize that architectures with deeper parameter entanglement (e.g., LightGCN's message-passing~\cite{he2020lightgcn}, SASRec's attention over shared item embeddings~\cite{kang2018self}) will exhibit higher manipulation displacement and ODR, but validating this requires future work.
+
 \paragraph{Threats to validity.}
 \emph{Internal}: Our black-box solvers (random search, hill-climbing) provide lower bounds on true manipulation displacement and upper bounds on reachability cost---stronger solvers would shift the numbers but not the direction of our findings. The warm-start retrain (25 steps) may underestimate full-retrain coupling effects.
 \emph{External}: MF and NeuMF are simpler than production systems (transformers, graph neural networks). We expect our findings to \emph{strengthen} with deeper architectures, but this remains to be validated. Our two datasets span different domains and sparsity levels but both use explicit ratings; implicit-feedback systems may behave differently.
 
 \paragraph{Limitations.}
-Our reachability budget ($B = 20$) is conservative; higher budgets would likely increase reachability rates. ODR thresholds at population medians are a natural choice but not the only valid one; sensitivity analysis across threshold percentiles is left to future work. CausalLens currently requires model-level access (white-box or retrain-capable); pure API-only auditing with no retrain capability remains an open challenge.
+Our reachability budget ($B = 20$) is conservative; higher budgets would likely increase reachability rates. ODR thresholds at population medians are a natural choice but not the only valid one; we verified that ODR remains above 68\% across the 25th--75th percentile range (see Section~\ref{sec:results}). CausalLens currently requires model-level access (white-box or retrain-capable); pure API-only auditing with no retrain capability remains an open challenge. Our experiments use a single random seed; multi-seed variance analysis is planned for the camera-ready version.
+
+\paragraph{Ethical considerations.}
+CausalLens simulates adversarial manipulation on offline datasets with no impact on real users. However, the toolkit could in principle be used to identify and exploit manipulation vulnerabilities in deployed systems. We release CausalLens as an auditing tool and encourage its use for defensive purposes---identifying vulnerable users and hardening recommendation pipelines---rather than for attack development. This dual-use concern is inherent to all security auditing tools and does not, in our view, outweigh the transparency benefits.
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -290,7 +305,9 @@ We presented CausalLens, an open-source toolkit that operationalizes causal auto
 
 %% ── acknowledgments ─────────────────────────────────────────────────
 \begin{acks}
-We thank the anonymous reviewers for their feedback. This work was supported by Austin Community College.
+We thank the anonymous reviewers for their feedback.
+
+\paragraph{GenAI disclosure.} This work used generative AI tools (Claude, Anthropic) for code generation, figure production, and drafting assistance. All research design, metric definitions, experimental methodology, interpretation of results, and scientific claims are the sole intellectual contribution of the authors.
 \end{acks}
 
 %% ── references ──────────────────────────────────────────────────────
