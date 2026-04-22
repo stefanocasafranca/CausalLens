@@ -47,6 +47,7 @@ def reachability_cost_whitebox(
     """
     m = rating_matrix.shape[1]
     r_orig = torch.tensor(rating_matrix[user_id], dtype=torch.float32)
+    orig_rated_mask = r_orig > 0  # Mask for already-rated items
 
     best_cost = float("inf")
     best_delta = None
@@ -64,9 +65,10 @@ def reachability_cost_whitebox(
 
         # Direct loss: maximise target score, minimise top-k scores
         target_score = scores[target_item]
-        # Get k-th highest score excluding target
+        # Get k-th highest score excluding target and already-rated items
         scores_no_target = scores.clone()
         scores_no_target[target_item] = -1e9
+        scores_no_target[orig_rated_mask] = -1e9
         topk_vals, _ = torch.topk(scores_no_target, k)
         threshold = topk_vals[-1]
 
@@ -80,11 +82,13 @@ def reachability_cost_whitebox(
             if delta.abs().sum() > max_budget:
                 delta.data = _project_l1_reachability(delta.data, max_budget)
 
-        # Check rank
+        # Check rank (mask already-rated items, consistent with get_recommendations)
         with torch.no_grad():
             r_check = torch.clamp(r_orig + delta, 0.0, 5.0)
             s = recommender.get_scores_differentiable(user_id, r_check)
-            rank = (s > s[target_item]).sum().item() + 1
+            s_rank = s.clone()
+            s_rank[orig_rated_mask] = float('-inf')
+            rank = (s_rank > s_rank[target_item]).sum().item() + 1
             cost = delta.abs().sum().item()
             if rank <= k and cost < best_cost:
                 best_cost = cost
@@ -107,6 +111,7 @@ def reachability_cost_whitebox(
                 target_score = scores[target_item]
                 scores_no_target = scores.clone()
                 scores_no_target[target_item] = -1e9
+                scores_no_target[orig_rated_mask] = -1e9
                 topk_vals, _ = torch.topk(scores_no_target, k)
                 threshold = topk_vals[-1]
                 loss = -(target_score - threshold)
@@ -117,7 +122,9 @@ def reachability_cost_whitebox(
                         delta2.data = _project_l1_reachability(delta2.data, mid)
                     r_check = torch.clamp(r_orig + delta2, 0.0, 5.0)
                     s = recommender.get_scores_differentiable(user_id, r_check)
-                    rank = (s > s[target_item]).sum().item() + 1
+                    s_rank = s.clone()
+                    s_rank[orig_rated_mask] = float('-inf')
+                    rank = (s_rank > s_rank[target_item]).sum().item() + 1
                     if rank <= k:
                         found = True
                         c = delta2.abs().sum().item()
@@ -138,7 +145,9 @@ def reachability_cost_whitebox(
         with torch.no_grad():
             r_check = torch.clamp(r_orig + best_delta, 0.0, 5.0)
             s = recommender.get_scores_differentiable(user_id, r_check)
-            final_rank = (s > s[target_item]).sum().item() + 1
+            s_rank = s.clone()
+            s_rank[orig_rated_mask] = float('-inf')
+            final_rank = (s_rank > s_rank[target_item]).sum().item() + 1
 
     return {
         "cost": best_cost,

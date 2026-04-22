@@ -11,6 +11,7 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{subcaption}
+\usepackage{placeins}           % \FloatBarrier to prevent floats from drifting
 
 %% ── micro-typography ───────────────────────────────────────────────
 \emergencystretch=1em          % absorb minor overfull hboxes globally
@@ -197,7 +198,7 @@ We evaluate two architectures implemented from scratch within CausalLens:
 \end{itemize}
 
 \paragraph{Protocol.}
-For each of the four model--dataset combinations, we sample 200 users with $\geq 20$ ratings ($N = 800$ total evaluations). Per user: 5 reachability targets (random unrated items outside current top-$k$) with budget $B = 20$ rating changes and 50 gradient steps (MF) or 20 random-search trials (NeuMF); 3 random adversaries with budget $\varepsilon = 5$; self-influence with budget $\varepsilon = 5$. Observational autonomy thresholds are set at within-combo medians of diversity and volatility. All experiments use $k = 10$ and Jaccard distance.
+For each of the four model--dataset combinations, we sample 200 users with $\geq 20$ ratings ($N = 800$ total evaluations). Per user: 5 reachability targets (random unrated items outside current top-$k$) with budget $B = 20$ rating changes and 50 random-search trials; 3 random adversaries with budget $\varepsilon = 5$; self-influence with budget $\varepsilon = 5$. All models use the same black-box random-search reachability solver to ensure cross-model comparability. Observational autonomy thresholds are set at within-combo medians of diversity and volatility. All experiments use $k = 10$ and Jaccard distance.
 
 \paragraph{Budget justification.}
 The reachability budget $B = 20$ represents a substantial behavioral change; Section~\ref{sec:results} shows most targets remain unreachable, which is itself informative about structural rigidity.
@@ -252,25 +253,25 @@ Only 12.4\% of users (99/800) achieve any reachability success within budget-20 
 
 Users with AAI ${>}\,1$ (adversary influence exceeds self-influence) are concentrated in MF/ML-1M (13.0\% of users; Figure~\ref{fig:aai}). Counterintuitively, NeuMF shows fewer AAI $> 1$ users (3.0\% on ML-1M, 1.0\% on Amazon-MI) despite higher absolute manipulation. This is because NeuMF's cross-user coupling also amplifies self-influence: when a user's own rating changes trigger shared-parameter updates, those updates propagate back to the user's own scores. The geometry of the scatter plot (Figure~\ref{fig:aai}) reveals that MF users cluster along the low-external, high-self axis, while NeuMF pushes users into higher-external territory but with proportionally higher self-influence.
 
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
-    \includegraphics[width=\textwidth]{fig3_aai_scatter.pdf}
+    \includegraphics[width=\columnwidth]{fig3_aai_scatter.pdf}
     \Description{Scatter plots of self-influence versus external adversary influence for each model-dataset combination. A diagonal line separates healthy autonomy below from problematic asymmetry above. MF/ML-1M has the most points above the diagonal.}
     \caption{Self-influence vs.\ external (adversary) influence per user. Points above the $y = x$ diagonal have AAI $> 1$ (adversary controls more than user). The shaded region marks causal capture. MF/ML-1M: 13.0\% above diagonal; NeuMF/Amazon-MI: 1.0\%.}
     \label{fig:aai}
-\end{figure*}
+\end{figure}
 
 \subsection{ODR Across Architectures and Datasets}
 
 Figure~\ref{fig:odr} shows ODR across all combinations. NeuMF's deception rate exceeds MF's on both datasets (ML-1M: 90.4\% vs.\ 68.3\%; Amazon-MI: 93.9\% vs.\ 88.0\%), tracking the higher base unreachability rates in NeuMF conditions. The observational baselines (Table~\ref{tab:odr-breakdown}) confirm that NeuMF produces higher diversity (ILD: 0.819--0.999 vs.\ 0.733--0.983) and higher volatility (0.579--0.706 vs.\ 0.128--0.359), which \emph{should} signal greater user autonomy---yet the perturbation-based metrics reveal the opposite. Deeper architectures trap more users while scoring higher on every observational autonomy indicator.
 
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
-    \includegraphics[width=\textwidth]{fig4_odr_comparison.pdf}
+    \includegraphics[width=\columnwidth]{fig4_odr_comparison.pdf}
     \Description{Bar chart comparing Observational Deception Rate across four model-dataset combinations. All bars exceed 68 percent, with NeuMF/Amazon-MI highest at 93.9 percent.}
     \caption{Observational Deception Rate across model--dataset combinations. ODR measures the fraction of observationally autonomous users who are causally trapped. NeuMF consistently exceeds MF, reaching 93.9\% on Amazon-MI.}
     \label{fig:odr}
-\end{figure*}
+\end{figure}
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -313,6 +314,7 @@ We thank the anonymous reviewers for their feedback.
 \end{acks}
 
 %% ── references ──────────────────────────────────────────────────────
+\FloatBarrier
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
 

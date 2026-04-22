@@ -29,7 +29,6 @@ from causallens.data.movielens import load_movielens_1m
 from causallens.data.amazon import load_amazon_digital_music
 from causallens.models.mf import MatrixFactorization
 from causallens.models.neumf import NeuMF
-from causallens.metrics.reachability import reachability_cost_whitebox
 from causallens.metrics.observational import (
     intra_list_diversity,
     recommendation_volatility,
@@ -43,15 +42,12 @@ EPSILON = 5
 N_REACHABILITY_TARGETS = 5
 N_ADVERSARIES = 3
 REACHABILITY_MAX_BUDGET = 20
-REACHABILITY_TRIALS = 50       # MF random search (not used — MF uses whitebox)
+REACHABILITY_TRIALS = 50       # random search trials (same solver for all models)
 MANIPULATION_TRIALS = 10       # MF manipulation trials
 SELF_INFLUENCE_TRIALS = 15     # MF self-influence trials
 # Reduced NeuMF-specific trials to keep per-user time under 2 min
-NEUMF_REACHABILITY_TRIALS = 20
 NEUMF_MANIPULATION_TRIALS = 8
 NEUMF_SELF_INFLUENCE_TRIALS = 10
-MF_REACHABILITY_NSTEPS = 50   # whitebox gradient steps
-MF_REACHABILITY_TIMEOUT = 30  # seconds per target (reduced for larger datasets)
 NEUMF_USER_TIMEOUT = 180     # seconds per user (safety net, may not fire in C code)
 CSV_PATH = "results/phase3_results.csv"
 MAX_TOTAL_HOURS = 4.0
@@ -77,7 +73,7 @@ def reachability_random_search(
     recommender, user_id, target_item, rating_matrix,
     k=10, max_budget=50, n_trials=50,
 ):
-    """Random search reachability for neural models (NeuMF)."""
+    """Random search reachability (same solver for all models)."""
     m = rating_matrix.shape[1]
     unrated = np.where(rating_matrix[user_id] == 0)[0]
     unrated = unrated[unrated != target_item]
@@ -232,27 +228,11 @@ def _compute_user_metrics_inner(
     costs = []
     successes = 0
     for t in targets:
-        if model_name == "MF":
-            # Whitebox with timeout to avoid pathological users
-            try:
-                signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.alarm(MF_REACHABILITY_TIMEOUT)
-                r = reachability_cost_whitebox(
-                    model, uid, int(t), R, k=K,
-                    max_budget=REACHABILITY_MAX_BUDGET,
-                    n_steps=MF_REACHABILITY_NSTEPS,
-                )
-                signal.alarm(0)
-            except TimeoutError:
-                signal.alarm(0)
-                r = {"cost": float("inf"), "success": False, "rank": R.shape[1]}
-        else:
-            n_reach_trials = NEUMF_REACHABILITY_TRIALS if model_name == "NeuMF" else REACHABILITY_TRIALS
-            r = reachability_random_search(
-                model, uid, int(t), R, k=K,
-                max_budget=REACHABILITY_MAX_BUDGET,
-                n_trials=n_reach_trials,
-            )
+        r = reachability_random_search(
+            model, uid, int(t), R, k=K,
+            max_budget=REACHABILITY_MAX_BUDGET,
+            n_trials=REACHABILITY_TRIALS,
+        )
         if r["success"]:
             successes += 1
             costs.append(r["cost"])
