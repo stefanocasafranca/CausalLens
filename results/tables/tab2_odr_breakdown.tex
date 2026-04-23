@@ -6,10 +6,14 @@
 \toprule
 Model / Dataset & ILD (mean) & Coverage & Volatility (mean) & ODR (\%) \\
 \midrule
-MF / ML-1M & 0.733 & 0.094 & 0.128 & 68.3 \\
-NeuMF / ML-1M & 0.819 & 0.000 & 0.579 & 90.4 \\
-MF / Amazon-MI & 0.983 & 0.015 & 0.359 & 88.0 \\
-NeuMF / Amazon-MI & 0.999 & 0.054 & 0.706 & 93.9 \\
+MF / ML-1M & 0.733 & 0.096 & 0.125 & 95.1 \\
+NeuMF / ML-1M & 0.837 & 0.102 & 0.576 & 89.3 \\
+LightGCN / ML-1M & 0.607 & --- & 0.000 & 0.0 \\
+SASRec / ML-1M & 0.918 & --- & 0.055 & 14.3 \\
+MF / Amazon-MI & 0.983 & 0.017 & 0.357 & 94.5 \\
+NeuMF / Amazon-MI & 0.999 & 0.044 & 0.721 & 94.3 \\
+LightGCN / Amazon-MI & 1.000 & --- & 0.054 & 0.0 \\
+SASRec / Amazon-MI & 0.999 & --- & 0.050 & 0.0 \\
 \bottomrule
 \end{tabular}}
 \caption{Observational baselines and ODR per combination. ILD and volatility are per-user means; catalog coverage is population-level. ODR is the fraction of users flagged observationally autonomous (diversity ${>}$ median AND volatility ${>}$ median, within combo) who fail the causal reachability test (zero successes).}

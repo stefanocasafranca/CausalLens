@@ -377,9 +377,11 @@ def table1_main_results(df: pd.DataFrame) -> str:
     tex.append(r" & & (mean $\pm$ std) & (mean $\pm$ std) & (mean $\pm$ std) & \\")
     tex.append(r"\midrule")
     for r in rows:
+        r_cost = (f"${r['r_mean']:.2f} \\pm {r['r_std']:.2f}$"
+                  if not np.isnan(r['r_mean']) else "---")
         tex.append(
             f"{r['combo']} & {r['N']} & "
-            f"${r['r_mean']:.2f} \\pm {r['r_std']:.2f}$ & "
+            f"{r_cost} & "
             f"${r['m_mean']:.3f} \\pm {r['m_std']:.3f}$ & "
             f"${r['a_mean']:.3f} \\pm {r['a_std']:.3f}$ & "
             f"{r['odr']:.1f} \\\\"
@@ -424,10 +426,11 @@ def table2_odr_breakdown(df: pd.DataFrame) -> str:
     tex.append(r"Model / Dataset & ILD (mean) & Coverage & Volatility (mean) & ODR (\%) \\")
     tex.append(r"\midrule")
     for r in rows:
+        cov_str = f"{r['cov']:.3f}" if not np.isnan(r['cov']) else "---"
         tex.append(
             f"{r['combo']} & "
             f"{r['ild']:.3f} & "
-            f"{r['cov']:.3f} & "
+            f"{cov_str} & "
             f"{r['vol']:.3f} & "
             f"{r['odr']:.1f} \\\\"
         )

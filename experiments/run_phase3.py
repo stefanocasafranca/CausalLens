@@ -48,9 +48,9 @@ REACHABILITY_TRIALS = 50       # random search trials (same solver for all model
 MANIPULATION_TRIALS = 10       # default manipulation trials
 SELF_INFLUENCE_TRIALS = 15     # default self-influence trials
 # Per-model trial overrides (heavier models get fewer trials to keep runtime bounded)
-MODEL_MANIPULATION_TRIALS = {"MF": 10, "NeuMF": 8, "LightGCN": 3, "SASRec": 3}
+MODEL_MANIPULATION_TRIALS = {"MF": 10, "NeuMF": 8, "LightGCN": 2, "SASRec": 2}
 MODEL_SELF_INFLUENCE_TRIALS = {"MF": 15, "NeuMF": 10, "LightGCN": 10, "SASRec": 10}
-MODEL_REACHABILITY_TRIALS = {"MF": 50, "NeuMF": 50, "LightGCN": 25, "SASRec": 25}
+MODEL_REACHABILITY_TRIALS = {"MF": 50, "NeuMF": 50, "LightGCN": 15, "SASRec": 15}
 USER_TIMEOUT = 180           # seconds per user (safety net)
 CSV_PATH = "results/phase3_results.csv"
 MAX_TOTAL_HOURS = 48.0       # large budget for 4 models × 2 datasets unattended
@@ -266,6 +266,7 @@ def _compute_user_metrics_inner(
 
     costs = []
     successes = 0
+    consecutive_failures = 0
     for t in targets:
         r = reachability_random_search(
             model, uid, int(t), R, k=K,
@@ -275,6 +276,12 @@ def _compute_user_metrics_inner(
         if r["success"]:
             successes += 1
             costs.append(r["cost"])
+            consecutive_failures = 0
+        else:
+            consecutive_failures += 1
+            # Early termination: if 3+ consecutive targets unreachable, skip rest
+            if consecutive_failures >= 3 and successes == 0:
+                break
 
     n_targets = max(len(targets), 1)
     result["reachability_mean"] = float(np.mean(costs)) if costs else float("inf")
@@ -465,11 +472,20 @@ def run_experiment():
             n_u, n_i = R.shape
             print(f"  {n_u} users, {n_i} items, density {(R>0).sum()/(n_u*n_i):.4f}")
 
-            # Sample users (same for both models on this dataset)
+            # Sample users — reuse existing user_ids from CSV if available
+            existing_uids = set()
+            for row in existing_rows:
+                if row["dataset"] == ds_name:
+                    existing_uids.add(int(row["user_id"]))
             active = np.where((R > 0).sum(axis=1) >= 20)[0]
-            sample_n = min(n_users, len(active))
-            user_ids = np.random.choice(active, sample_n, replace=False).tolist()
-            print(f"  Sampled {sample_n} users (min 20 ratings)")
+            if existing_uids:
+                # Use the exact same user_ids as previous runs
+                user_ids = sorted(existing_uids)
+                print(f"  Reusing {len(user_ids)} users from CSV (min 20 ratings)")
+            else:
+                sample_n = min(n_users, len(active))
+                user_ids = np.random.choice(active, sample_n, replace=False).tolist()
+                print(f"  Sampled {sample_n} users (min 20 ratings)")
 
             models = [
                 ("MF", lambda: MatrixFactorization(
@@ -484,13 +500,13 @@ def run_experiment():
                 ("LightGCN", lambda: LightGCN(
                     n_u, n_i, embed_dim=64, n_layers=3,
                     n_epochs=20, batch_size=2048,
-                    retrain_steps=15,
+                    retrain_steps=10,
                 )),
                 ("SASRec", lambda: SASRec(
                     n_u, n_i, embed_dim=64, n_heads=2,
                     n_layers=2, max_seq_len=50,
                     n_epochs=30, batch_size=256,
-                    retrain_steps=15,
+                    retrain_steps=10,
                 )),
             ]
 
@@ -549,7 +565,7 @@ def run_experiment():
                     continue
 
                 print(f"\n{'='*70}")
-                print(f"  MODEL: {model_name} on {ds_name} ({sample_n} users)")
+                print(f"  MODEL: {model_name} on {ds_name} ({len(user_ids)} users)")
                 print(f"{'='*70}")
 
                 # Train
@@ -625,13 +641,13 @@ def run_experiment():
                 summary = {
                     "model": model_name,
                     "dataset": ds_name,
-                    "n_users": sample_n,
+                    "n_users": len(user_ids),
                     "reach_pct": float(np.mean(reach_rates)) * 100,
                     "reach_cost": float(np.mean(reach_costs)) if reach_costs else float("inf"),
                     "manip": float(np.mean([r["manipulation_resistance_mean"] for r in combo_results])),
                     "self_inf": float(np.mean([r["self_influence"] for r in combo_results])),
                     "aai": float(np.mean(aai_vals)) if aai_vals else float("inf"),
-                    "pct_prob": n_prob / sample_n * 100,
+                    "pct_prob": n_prob / len(user_ids) * 100,
                     "diversity": float(np.mean([r["diversity"] for r in combo_results])),
                     "volatility": float(np.mean([r["volatility"] for r in combo_results])),
                     "coverage": cov,

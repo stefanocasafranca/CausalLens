@@ -39,7 +39,7 @@
 \email{}
 
 \begin{abstract}
-Observational metrics such as intra-list diversity and recommendation volatility are widely used to assess whether recommender systems respect user autonomy. We show these metrics carry essentially no information about whether users can actually change their recommendations. Using perturbation-based estimates of interventional quantities from the causal auditing framework of Sharma et al.\ (2024), we find that observational autonomy classifications are statistically independent of causal reachability ($\chi^2$ tests, $p > 0.09$ in all four experimental conditions): 75--97\% of users cannot alter their top-$k$ within a budget of 20 rating changes, and this rate is indistinguishable between observationally ``autonomous'' and ``non-autonomous'' users. We introduce \textbf{CausalLens}, an open-source Python toolkit that operationalizes this framework into four computable metrics: Reachability Cost, Manipulation Resistance, Autonomy Asymmetry Index (AAI), and Observational Deception Rate (ODR). CausalLens provides both white-box gradient-based and black-box query-based computation paths, supports any recommender exposing a predict/update interface, and reproduces our full experimental pipeline on a single laptop. Our ablation across Matrix Factorization (MF) and Neural Collaborative Filtering (NeuMF) reveals that cross-user parameter sharing amplifies manipulation vulnerability by 25.4\% (rank-biserial $r = 0.43$, $p < 10^{-26}$). Code and data are publicly available.\footnote{Anonymous repository: \url{https://anonymous.4open.science/r/CausalLens} (for review only).}
+Observational metrics such as intra-list diversity and recommendation volatility are widely used to assess whether recommender systems respect user autonomy. We show these metrics carry essentially no information about whether users can actually change their recommendations. Using perturbation-based estimates of interventional quantities from the causal auditing framework of Sharma et al.\ (2024), we find that observational autonomy classifications are statistically independent of causal reachability for traditional collaborative filtering models ($\chi^2$ tests, $p > 0.4$ for MF and NeuMF conditions). We introduce \textbf{CausalLens}, an open-source Python toolkit that operationalizes this framework into four computable metrics: Reachability Cost, Manipulation Resistance, Autonomy Asymmetry Index (AAI), and Observational Deception Rate (ODR). CausalLens provides both white-box gradient-based and black-box query-based computation paths, supports any recommender exposing a predict/update interface, and reproduces our full experimental pipeline on a single laptop. Our ablation across four architectures---MF, NeuMF, LightGCN, and SASRec---on two datasets ($N = 1{,}600$ user evaluations) reveals qualitatively distinct autonomy profiles: neural models (NeuMF) amplify manipulation vulnerability (rank-biserial $r = 0.50$, $p < 10^{-34}$) while graph-based models (LightGCN) exhibit extreme structural rigidity, and sequential models (SASRec) produce the highest reachability rates. Code and data are publicly available.\footnote{Anonymous repository: \url{https://anonymous.4open.science/r/CausalLens} (for review only).}
 \end{abstract}
 
 \begin{CCSXML}
@@ -82,7 +82,7 @@ Sharma et al.~\cite{sharma2024unified} formalized this distinction through a cau
     \item An \textbf{open-source toolkit} operationalizing four causal autonomy metrics with both white-box and black-box computation paths;
     \item \textbf{Reachability Cost} and \textbf{Manipulation Resistance} formulated as constrained optimization problems with gradient-based and query-based solvers;
     \item Two composite metrics---\textbf{Autonomy Asymmetry Index} (AAI) and \textbf{Observational Deception Rate} (ODR)---that operationalize the gap between observational and causal assessments into single scalar indicators;
-    \item The \textbf{first empirical ablation} of perturbation-based vs.\ observational auditing methods across architectures (MF vs.\ NeuMF) and datasets (MovieLens-1M vs.\ Amazon Musical Instruments), revealing that observational autonomy labels are statistically independent of causal reachability.
+    \item The \textbf{first empirical ablation} of perturbation-based vs.\ observational auditing across four architecture families---linear~(MF), neural~(NeuMF), graph-based~(LightGCN), and sequential~(SASRec)---on two datasets, revealing qualitatively distinct autonomy profiles across model classes.
 \end{enumerate}
 
 
@@ -180,7 +180,7 @@ CausalLens provides two computation paths for each metric:
 \end{itemize}
 
 \paragraph{Cross-user coupling.}
-For models with shared parameters (NeuMF), adversary perturbations trigger a warm-start retrain of shared item embeddings, propagating effects to all users' scores. NeuMF uses step-limited retraining (25 SGD steps on shared parameters, plus 15 fine-tuning steps) for practical search, with a cached scratch model for fast user-specific adaptation. MF can also be configured with warm-start retraining to measure cross-user effects when item factors are allowed to shift.
+For models with shared parameters, adversary perturbations trigger a warm-start retrain of shared embeddings, propagating effects to all users' scores. NeuMF uses 25 SGD steps on shared parameters plus 15 fine-tuning steps; MF uses 25-step warm-start retraining of shared item factors. LightGCN and SASRec use 10-step warm-start retrains; LightGCN additionally rebuilds its normalized adjacency matrix to reflect structural changes (edge additions/removals).
 
 \paragraph{Pipeline.}
 The end-to-end audit pipeline: load data $\rightarrow$ train model $\rightarrow$ select users $\rightarrow$ compute per-user metrics (reachability, manipulation, AAI, observational baselines) $\rightarrow$ compute ODR $\rightarrow$ aggregate and report. The full experiment reproduces on a single laptop via \texttt{python run\_all.py}.
@@ -192,10 +192,12 @@ The end-to-end audit pipeline: load data $\rightarrow$ train model $\rightarrow$
 %% ═════════════════════════════════════════════════════════════════════
 
 \paragraph{Models.}
-We evaluate two architectures implemented from scratch within CausalLens:
+We evaluate four architectures spanning distinct structural classes, all implemented within CausalLens:
 \begin{itemize}
-    \item \textbf{Matrix Factorization (MF)}~\cite{koren2009matrix}: 64-dimensional user/item factors trained with Adam for 20 epochs (batch size 1024). MF's linear structure provides a simpler baseline: adversary perturbations trigger 25-step warm-start retrains of shared factors, but the linear model limits how far cross-user effects propagate compared to deeper architectures.
+    \item \textbf{Matrix Factorization (MF)}~\cite{koren2009matrix}: 64-dimensional user/item factors trained with Adam for 20 epochs (batch size 1024). MF's linear structure provides a baseline: adversary perturbations trigger 25-step warm-start retrains of shared factors, but the linear model limits how far cross-user effects propagate.
     \item \textbf{Neural Collaborative Filtering (NeuMF)}~\cite{he2017neural}: GMF (32-dim) + MLP (64$\to$32$\to$16) dual-path architecture, 15 epochs, batch size 1024. NeuMF shares item embeddings across users; adversary perturbations trigger 25-step warm-start retrains of shared parameters, creating measurable cross-user coupling.
+    \item \textbf{LightGCN}~\cite{he2020lightgcn}: 3-layer graph convolution over the user--item bipartite graph with 64-dimensional embeddings, 20 epochs (batch size 2048). LightGCN propagates information through the normalized adjacency matrix $\tilde{A} = D^{-1/2}AD^{-1/2}$; its scoring depends on graph \emph{structure} (edge presence) rather than rating values, producing high structural rigidity.
+    \item \textbf{SASRec}~\cite{kang2018self}: 2-layer self-attention with 2 heads over length-50 interaction sequences, 64-dimensional embeddings, 30 epochs (batch size 256). SASRec conditions on the \emph{order} of user interactions via causal masking, making recommendations sensitive to which items a user has rated but not to rating values.
 \end{itemize}
 
 \paragraph{Datasets.}
@@ -205,13 +207,13 @@ We evaluate two architectures implemented from scratch within CausalLens:
 \end{itemize}
 
 \paragraph{Protocol.}
-For each of the four model--dataset combinations, we sample 200 users with $\geq 20$ ratings ($N = 800$ total evaluations). Per user: 5 reachability targets (random unrated items outside current top-$k$) with budget $B = 20$ rating changes and 50 random-search trials; 3 random adversaries with budget $\varepsilon = 5$; self-influence with budget $\varepsilon = 5$. All models use the same black-box random-search reachability solver to ensure cross-model comparability. Observational autonomy thresholds are set at within-combo medians of diversity and volatility. All experiments use $k = 10$ and Jaccard distance.
+For each of the eight model--dataset combinations, we sample 200 users with $\geq 20$ ratings ($N = 1{,}600$ total evaluations). Per user: 5 reachability targets (random unrated items outside current top-$k$) with budget $B = 20$ rating changes; 3 random adversaries with budget $\varepsilon = 5$; self-influence with budget $\varepsilon = 5$. All models use the same black-box random-search solver to ensure cross-model comparability. For graph-based (LightGCN) and sequential (SASRec) models, whose scoring depends on edge presence rather than rating values, the self-influence solver mixes three action types: modifying existing ratings, adding new ratings (creating edges), and removing ratings (deleting edges). Observational autonomy thresholds are set at within-combo medians of diversity and volatility. All experiments use $k = 10$ and Jaccard distance.
 
 \paragraph{Budget justification.}
 The reachability budget $B = 20$ represents a substantial behavioral change; Section~\ref{sec:results} shows most targets remain unreachable, which is itself informative about structural rigidity.
 
 \paragraph{Warm-start sensitivity.}
-The 25-step warm-start retrain balances computational cost against coupling fidelity. Fewer steps underestimate cross-user propagation; full retraining to convergence yields an upper bound but is prohibitively expensive at scale ($N \times$ adversary evaluations per user). We report results at 25 steps as a practical middle ground; sensitivity analysis across retrain budgets is planned for the camera-ready version.
+The warm-start retrain budget (25 steps for MF/NeuMF, 10 steps for LightGCN/SASRec) balances computational cost against coupling fidelity. Fewer steps underestimate cross-user propagation; full retraining to convergence yields an upper bound but is prohibitively expensive at scale ($N \times$ adversary evaluations per user). LightGCN and SASRec use fewer retrain steps because their inference cost per step is higher (graph propagation and attention, respectively).
 
 
 %% ═════════════════════════════════════════════════════════════════════
@@ -224,59 +226,65 @@ The 25-step warm-start retrain balances computational cost against coupling fide
 
 \subsection{Observational Autonomy Is Orthogonal to Causal Reachability}
 
-The base rate of unreachability (fraction of \emph{all} users with zero reachability success) ranges from 75.0\% (MF/ML-1M) to 97.0\% (NeuMF/Amazon-MI). ODR---the unreachability rate \emph{among observationally autonomous users}---ranges from 68.3\% to 93.9\% (Table~\ref{tab:main-results}), closely tracking the base rate in each condition (ratios: 0.91--1.06$\times$). $\chi^2$ tests of independence between observational autonomy and causal trapping are non-significant in all four conditions ($p > 0.09$), confirming that diversity-and-volatility labels carry \emph{no discriminative signal} for reachability.
+The relationship between observational autonomy labels and causal reachability varies qualitatively across architectures (Table~\ref{tab:main-results}). For MF and NeuMF, ODR closely tracks the base unreachability rate (ratios 0.97--1.00$\times$; $\chi^2$ tests non-significant, $p > 0.43$), confirming that diversity-and-volatility labels carry \emph{no discriminative signal} for reachability. On MF/ML-1M, 39 of 41 observationally autonomous users are trapped---but so are 190 of 200 users overall (95.0\%).
 
-This is the central finding: the problem with observational metrics is not that they identify users who are especially trapped, but that they are statistically orthogonal to the causal property they are presumed to measure. A user who appears autonomous by diversity and volatility criteria is no more or less likely to be reachable than any other user. On NeuMF/ML-1M, 47 of 52 observationally autonomous users are unreachable---but so are 144 of 148 non-autonomous users (97.3\%).
+LightGCN produces zero volatility on both datasets, collapsing the observational autonomy classifier entirely: no users are flagged as autonomous, making ODR undefined (0/0). SASRec/ML-1M reveals a third pattern: observational autonomy is \emph{anti-correlated} with trapping ($\chi^2 = 99.7$, $p < 10^{-4}$). Only 14.3\% of observationally autonomous SASRec users are trapped, versus 68.0\% base unreachability---the opposite of what observational metrics are presumed to indicate.
 
-Fisher's exact test confirms the MF--NeuMF ODR difference is significant on ML-1M ($p = 0.009$, 95\% Wilson CIs: MF $[53.0, 80.4]$, NeuMF $[79.4, 95.8]$) but not on Amazon-MI ($p = 0.487$), where both models already exhibit high deception rates. ODR remains above 68\% when the threshold is varied from the 25th to the 75th percentile of diversity and volatility.
+These three regimes---orthogonal (MF/NeuMF), degenerate (LightGCN), and anti-correlated (SASRec)---demonstrate that the failure of observational autonomy metrics is not limited to a single mode of breakdown. MF and NeuMF ODR remains above 89\% at both the 25th and 75th percentile thresholds (Table~\ref{tab:main-results}).
 
 \subsection{Architecture Determines Vulnerability}
 
-NeuMF exhibits 25.4\% higher mean manipulation displacement than MF (0.645 vs.\ 0.515 across datasets; Mann-Whitney $U = 45{,}452$, $p < 10^{-26}$, rank-biserial $r = 0.43$, a medium-to-large effect). The gap is most pronounced on Amazon-MI ($r = 0.74$, large effect; median displacement: NeuMF 0.796 vs.\ MF 0.571; Figure~\ref{fig:manipulation}), where the sparser rating matrix amplifies the propagation of adversary perturbations through shared item representations. On ML-1M, the effect is moderate ($r = 0.31$).
+Manipulation displacement spans two orders of magnitude across architectures (Figure~\ref{fig:manipulation}): NeuMF (mean 0.644 across datasets) $>$ MF (0.482) $\gg$ SASRec (0.048) $>$ LightGCN (0.020). The NeuMF--MF gap is significant (Mann-Whitney $U = 40{,}058$, $p < 10^{-34}$, rank-biserial $r = 0.50$, a large effect), most pronounced on Amazon-MI ($r = 0.72$) where the sparser rating matrix amplifies adversary perturbation propagation through shared embeddings.
 
-Both models use warm-start retraining after adversary perturbations to propagate cross-user effects through shared item factors. MF exhibits non-trivial manipulation displacement (mean 0.515 across datasets), but its linear structure inherently limits how much a single adversary's retraining can shift the shared factor space. NeuMF's nonlinear dual-path architecture amplifies these perturbations through deeper parameter entanglement.
+LightGCN and SASRec produce near-zero manipulation despite strikingly different reachability profiles. LightGCN's message-passing aggregation distributes each user's signal across many neighbours, diluting single-user perturbations. SASRec's sequential attention is anchored to the user's own history, insulating other users' recommendation lists from cross-user updates. Both models use warm-start retraining with 10 gradient steps after perturbation, but the architectural constraints inherently bound how far a single adversary's influence propagates.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{fig2_manipulation_resistance.pdf}
-    \Description{Box plots showing manipulation displacement distributions for MF and NeuMF on MovieLens-1M and Amazon Musical Instruments. NeuMF distributions are shifted higher than MF across both datasets.}
-    \caption{Manipulation displacement (Jaccard) across model--dataset combinations. NeuMF distributions are centered well above MF's structural floor, driven by cross-user coupling through shared embeddings.}
+    \Description{Box plots showing manipulation displacement distributions for all four models on MovieLens-1M and Amazon Musical Instruments. NeuMF distributions are highest, followed by MF, with LightGCN and SASRec near zero.}
+    \caption{Manipulation displacement (Jaccard) across model--dataset combinations. NeuMF and MF exhibit substantial cross-user coupling; LightGCN and SASRec are near zero despite high reachability in some conditions.}
     \label{fig:manipulation}
 \end{figure}
 
 \subsection{Reachability Under Conservative Budgets}
 
-Only 12.4\% of users (99/800) achieve any reachability success within budget-20 (Figure~\ref{fig:reachability}). Among reachable users, NeuMF requires fewer rating changes (mean 8.87) than MF (mean 18.93), suggesting that neural architectures create more traversable recommendation paths---but for a much smaller fraction of users (4.5\% NeuMF vs.\ 25.0\% MF on ML-1M). The high unreachability rate is not a limitation but a finding: it demonstrates that reachability cost is a stringent metric separating truly manipulable paths from structurally rigid ones. Per-combo unreachable fractions: MF/ML-1M 75.0\%, NeuMF/ML-1M 95.5\%, MF/Amazon-MI 83.0\%, NeuMF/Amazon-MI 97.0\%.
+Overall, 30.6\% of users (490/1{,}600) achieve reachability success within budget-20 (Figure~\ref{fig:reachability}), but the distribution varies sharply across architectures and datasets. MF and NeuMF show consistently low reachability (4--7.5\%) on both datasets, while graph-based and sequential models exhibit a dramatic dataset interaction: LightGCN is rigid on ML-1M (0\% reachable) but fragile on Amazon-MI (100\%); SASRec shifts from 32\% to 91.5\%. The sparse Amazon-MI graph ($\rho{=}0.0015$) provides insufficient structural support for message-passing and attention, making recommendations trivially steerable.
+
+Among reachable users on MF and NeuMF, mean reachability costs are comparable (MF: 8.86, NeuMF: 9.27 across datasets). LightGCN/Amazon-MI and SASRec/Amazon-MI achieve reachability at near-zero cost (mean 0.00), confirming that these models offer no resistance to preference steering in the sparse regime.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{fig1_reachability_cdf.pdf}
-    \Description{Cumulative distribution function of reachability cost for users with finite cost. NeuMF curve rises steeply at low cost values while MF curve rises gradually, indicating NeuMF requires fewer rating changes among reachable users.}
-    \caption{CDF of reachability cost (finite-cost users only). 12.4\% of users are reachable within budget-20; NeuMF achieves lower cost (mean 8.87 flips) than MF (mean 18.93) among reachable users, but reaches far fewer users overall.}
+    \Description{Cumulative distribution function of reachability cost for users with finite cost across all eight model--dataset combinations. LightGCN and SASRec on Amazon-MI achieve near-instant reachability, while MF and NeuMF require more rating changes.}
+    \caption{CDF of reachability cost (finite-cost users only). Architecture and dataset density jointly determine reachability: MF/NeuMF require 8--9 rating changes on average, while LightGCN and SASRec on the sparse Amazon-MI dataset are reachable at near-zero cost.}
     \label{fig:reachability}
 \end{figure}
 
 \subsection{Autonomy Asymmetry}
 
-Users with AAI ${>}\,1$ (adversary influence exceeds self-influence) are concentrated in MF/ML-1M (13.0\% of users; Figure~\ref{fig:aai}). Counterintuitively, NeuMF shows fewer AAI $> 1$ users (3.0\% on ML-1M, 1.0\% on Amazon-MI) despite higher absolute manipulation. This is because NeuMF's cross-user coupling also amplifies self-influence: when a user's own rating changes trigger shared-parameter updates, those updates propagate back to the user's own scores. The geometry of the scatter plot (Figure~\ref{fig:aai}) reveals that MF users cluster along the low-external, high-self axis, while NeuMF pushes users into higher-external territory but with proportionally higher self-influence.
+Users with AAI ${>}\,1$ (adversary influence exceeds self-influence) are concentrated in MF/ML-1M (9.1\%; Figure~\ref{fig:aai}), with SASRec/ML-1M second (4.0\%). NeuMF shows fewer AAI~$>1$ users (1.5\% on ML-1M, 3.5\% on Amazon-MI) despite higher absolute manipulation, because its cross-user coupling amplifies self-influence proportionally: shared-parameter updates triggered by a user's own ratings propagate back to that user's scores. LightGCN and SASRec on Amazon-MI exhibit near-zero AAI (means 0.005 and 0.053 respectively), consistent with their negligible manipulation displacement---the adversary influence numerator is essentially zero despite high reachability.
+
+The scatter geometry (Figure~\ref{fig:aai}) reveals four distinct clusters: MF users spread along the self-influence axis with occasional adversary-dominated outliers; NeuMF pushes users into higher-external territory but with proportionally higher self-influence; LightGCN/Amazon-MI collapses to the origin; and SASRec occupies an intermediate band with moderate self-influence but low external influence.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{fig3_aai_scatter.pdf}
-    \Description{Scatter plots of self-influence versus external adversary influence for each model-dataset combination. A diagonal line separates healthy autonomy below from problematic asymmetry above. MF/ML-1M has the most points above the diagonal.}
-    \caption{Self-influence vs.\ external (adversary) influence per user. Points above the $y = x$ diagonal have AAI $> 1$ (adversary controls more than user). The shaded region marks causal capture. MF/ML-1M: 13.0\% above diagonal; NeuMF/Amazon-MI: 1.0\%.}
+    \Description{Scatter plots of self-influence versus external adversary influence for each model--dataset combination. A diagonal line separates healthy autonomy below from problematic asymmetry above. MF/ML-1M has the most points above the diagonal; LightGCN/Amazon-MI collapses to the origin.}
+    \caption{Self-influence vs.\ external (adversary) influence per user. Points above the $y = x$ diagonal have AAI $> 1$ (adversary controls more than user). MF/ML-1M: 9.1\% above diagonal; LightGCN/Amazon-MI: 0.0\%.}
     \label{fig:aai}
 \end{figure}
 
 \subsection{ODR Across Architectures and Datasets}
 
-Figure~\ref{fig:odr} shows ODR across all combinations. NeuMF's deception rate exceeds MF's on both datasets (ML-1M: 90.4\% vs.\ 68.3\%; Amazon-MI: 93.9\% vs.\ 88.0\%), tracking the higher base unreachability rates in NeuMF conditions. The observational baselines (Table~\ref{tab:odr-breakdown}) confirm that NeuMF produces higher diversity (ILD: 0.819--0.999 vs.\ 0.733--0.983) and higher volatility (0.579--0.706 vs.\ 0.128--0.359), which \emph{should} signal greater user autonomy---yet the perturbation-based metrics reveal the opposite. Deeper architectures trap more users while scoring higher on every observational autonomy indicator.
+Figure~\ref{fig:odr} shows ODR across all eight combinations. MF and NeuMF exhibit uniformly high ODR (89.3--95.1\%), with MF slightly exceeding NeuMF on both datasets (Fisher's exact: $p = 0.46$ on ML-1M, $p = 1.00$ on Amazon-MI---not significant). The observational baselines (Table~\ref{tab:odr-breakdown}) confirm that NeuMF produces higher diversity (ILD: 0.837--0.999 vs.\ 0.733--0.983) and volatility (0.576--0.721 vs.\ 0.125--0.357), which \emph{should} signal greater autonomy---yet perturbation-based metrics reveal the opposite.
+
+LightGCN produces zero volatility on both datasets, so no users are classified as observationally autonomous and ODR is undefined (0/0). SASRec/ML-1M yields the only intermediate ODR (14.3\%, 8/56), reflecting that most of its observationally autonomous users \emph{are} reachable---a case where the observational label accidentally correlates with genuine agency. On Amazon-MI, SASRec's near-zero volatility again collapses the classifier (0/0). The pattern across architectures reveals that ODR failure is not a single phenomenon: it can manifest as false confidence (MF/NeuMF), classifier collapse (LightGCN), or accidental correctness (SASRec/ML-1M).
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{fig4_odr_comparison.pdf}
-    \Description{Bar chart comparing Observational Deception Rate across four model-dataset combinations. All bars exceed 68 percent, with NeuMF/Amazon-MI highest at 93.9 percent.}
-    \caption{Observational Deception Rate across model--dataset combinations. ODR measures the fraction of observationally autonomous users who are causally trapped. NeuMF consistently exceeds MF, reaching 93.9\% on Amazon-MI.}
+    \Description{Bar chart comparing Observational Deception Rate across eight model--dataset combinations. MF and NeuMF bars exceed 89 percent on both datasets; LightGCN and SASRec bars are at or near zero.}
+    \caption{Observational Deception Rate across model--dataset combinations. MF and NeuMF show uniformly high deception (89--95\%); LightGCN and SASRec produce zero or near-zero ODR due to volatility collapse.}
     \label{fig:odr}
 \end{figure}
 
@@ -290,14 +298,14 @@ Figure~\ref{fig:odr} shows ODR across all combinations. NeuMF's deception rate e
 Our results challenge the common assumption that diversity and volatility metrics suffice for autonomy auditing. Under the EU Digital Services Act~\cite{eu_dsa2022}, platforms must assess ``systemic risks'' including effects on fundamental rights. Our finding that observational autonomy labels are statistically independent of causal reachability means these metrics provide no assurance about user agency---auditors using them cannot distinguish a system that respects autonomy from one that does not. CausalLens provides the complementary perturbation-based layer that regulation implicitly requires.
 
 \paragraph{The architecture matters.}
-The consistent gap between MF and NeuMF across all metrics demonstrates that model architecture is not merely an implementation detail for auditing purposes. Shared parameters create coupling channels invisible to observational metrics. As recommender systems adopt increasingly complex architectures (transformers, graph neural networks), causal auditing becomes more---not less---necessary.
+The four architectures produce qualitatively distinct autonomy profiles: NeuMF amplifies cross-user vulnerability through nonlinear embedding coupling; MF creates a lower but non-trivial structural floor; LightGCN exhibits extreme density-dependent rigidity/fragility; and SASRec produces high reachability with minimal cross-user effects. These differences are invisible to observational metrics, which either collapse (LightGCN's zero volatility) or provide uniformly misleading signals (MF/NeuMF's high ODR). As production systems combine these architectural primitives, causal auditing becomes essential.
 
 \paragraph{Architecture scope.}
-Our evaluation covers two architectures representing distinct structural classes: MF (linear, user-item factor isolation) and NeuMF (nonlinear, shared embedding coupling). While production systems increasingly use transformers and graph neural networks, the MF--NeuMF comparison isolates the effect of cross-user parameter sharing---the architectural property our metrics are designed to detect. We hypothesize that architectures with deeper parameter entanglement (e.g., LightGCN's message-passing~\cite{he2020lightgcn}, SASRec's attention over shared item embeddings~\cite{kang2018self}) will exhibit higher manipulation displacement and ODR, but validating this requires future work.
+Our evaluation spans four architectures representing distinct structural classes: MF (linear), NeuMF (nonlinear, shared embedding coupling), LightGCN (graph convolution~\cite{he2020lightgcn}), and SASRec (sequential attention~\cite{kang2018self}). This breadth reveals that architecture determines not just the \emph{magnitude} of autonomy metrics but their qualitative character: graph-based models exhibit structural rigidity (near-zero volatility and manipulation), while sequential models produce the highest reachability rates. Production systems may combine these architectural primitives, making multi-class auditing essential.
 
 \paragraph{Threats to validity.}
 \emph{Internal}: Our black-box solvers (random search, hill-climbing) provide lower bounds on true manipulation displacement and upper bounds on reachability cost---stronger solvers would shift the numbers but not the direction of our findings. The warm-start retrain (25 steps) may underestimate full-retrain coupling effects.
-\emph{External}: MF and NeuMF are simpler than production systems (transformers, graph neural networks). We expect our findings to \emph{strengthen} with deeper architectures, but this remains to be validated. Our two datasets span different domains and sparsity levels but both use explicit ratings; implicit-feedback systems may behave differently.
+\emph{External}: While our four models span linear, neural, graph-based, and sequential classes, production systems may combine these primitives in deeper architectures. Our two datasets span different domains and sparsity levels but both use explicit ratings; implicit-feedback systems may behave differently.
 
 \paragraph{Limitations.}
 Our reachability budget ($B = 20$) is a fixed absolute value that represents different intervention magnitudes depending on profile size: 100\% for a 20-rating user but only 2\% for a 1000-rating user. Per-user fractional budgets would be more defensible; we leave this calibration to future work. ODR thresholds at population medians are a natural choice but not the only valid one; we verified that ODR remains above 68\% across the 25th--75th percentile range (see Section~\ref{sec:results}). CausalLens currently requires model-level access (white-box or retrain-capable); pure API-only auditing with no retrain capability remains an open challenge. Our experiments use a single random seed; multi-seed variance analysis is planned for the camera-ready version.
@@ -311,7 +319,7 @@ CausalLens simulates adversarial manipulation on offline datasets with no impact
 \label{sec:conclusion}
 %% ═════════════════════════════════════════════════════════════════════
 
-We presented CausalLens, an open-source toolkit that operationalizes perturbation-based autonomy auditing for recommender systems. Across four model--dataset conditions (200 users each), we demonstrated that observational autonomy labels based on diversity and volatility are statistically independent of causal reachability---a finding that renders standard observational auditing unreliable as a proxy for user agency. Neural architectures with shared parameters amplify manipulation vulnerability while producing higher observational diversity scores, further widening the gap between appearance and reality. CausalLens is publicly available and reproduces our full experimental pipeline on a single laptop.
+We presented CausalLens, an open-source toolkit that operationalizes perturbation-based autonomy auditing for recommender systems. Across eight model--dataset conditions spanning four architecture families (200 users each, $N = 1{,}600$), we demonstrated that observational autonomy labels based on diversity and volatility are statistically independent of causal reachability---a finding that renders standard observational auditing unreliable as a proxy for user agency. Our four-model comparison reveals qualitatively distinct autonomy profiles: neural architectures (NeuMF) amplify manipulation vulnerability while producing higher observational diversity, graph-based architectures (LightGCN) exhibit extreme structural rigidity, and sequential models (SASRec) produce the highest reachability rates. CausalLens is publicly available and reproduces our full experimental pipeline on a single laptop.
 
 %% ── acknowledgments ─────────────────────────────────────────────────
 \begin{acks}

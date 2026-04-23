@@ -171,9 +171,13 @@ def main():
         b = int(( auto & ~trapped).sum())
         c = int((~auto & trapped).sum())
         dd = int((~auto & ~trapped).sum())
-        chi2, p, _, _ = chi2_contingency([[a,b],[c,dd]])
-        print(f"  {combo_label(m, d):25s}  base={100*base_rate:.1f}%  ODR={100*odr_val:.1f}%  "
-              f"ratio={odr_val/base_rate:.2f}x  chi2={chi2:.2f}  p={p:.4f}")
+        if (a + b) == 0 or (c + dd) == 0 or (a + c) == 0 or (b + dd) == 0:
+            print(f"  {combo_label(m, d):25s}  base={100*base_rate:.1f}%  ODR={100*odr_val:.1f}%  "
+                  f"ratio={'N/A' if base_rate == 0 else f'{odr_val/base_rate:.2f}x'}  chi2=N/A  p=N/A  (degenerate table)")
+        else:
+            chi2, p, _, _ = chi2_contingency([[a,b],[c,dd]])
+            print(f"  {combo_label(m, d):25s}  base={100*base_rate:.1f}%  ODR={100*odr_val:.1f}%  "
+                  f"ratio={odr_val/base_rate:.2f}x  chi2={chi2:.2f}  p={p:.4f}")
 
     print()
     print("=" * 78)
