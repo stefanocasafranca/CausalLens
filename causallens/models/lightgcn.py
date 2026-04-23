@@ -10,6 +10,7 @@ graph, so retraining on perturbed data shifts all users' scores.
 """
 
 import numpy as np
+import scipy.sparse as sp
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -24,20 +25,14 @@ from causallens.recommender import Recommender
 # ------------------------------------------------------------------
 
 def _build_normalized_adj(rating_matrix: np.ndarray) -> torch.Tensor:
-    """Build normalized bipartite adjacency D^{-1/2} A D^{-1/2}.
-
-    Node layout: [user_0 .. user_{n-1}, item_0 .. item_{m-1}].
-    Edges are bidirectional between users and items with nonzero ratings.
-    """
+    """Build normalized bipartite adjacency D^{-1/2} A D^{-1/2} (torch sparse)."""
     n_u, n_i = rating_matrix.shape
     users, items = np.nonzero(rating_matrix)
     n = n_u + n_i
 
-    # Bidirectional edges: user→item and item→user
     row = np.concatenate([users, items + n_u])
     col = np.concatenate([items + n_u, users])
 
-    # Degree normalization
     degree = np.zeros(n, dtype=np.float32)
     np.add.at(degree, row, 1.0)
     d_inv_sqrt = np.where(degree > 0, 1.0 / np.sqrt(degree), 0.0)
@@ -46,6 +41,23 @@ def _build_normalized_adj(rating_matrix: np.ndarray) -> torch.Tensor:
     indices = torch.tensor(np.stack([row, col]), dtype=torch.long)
     values = torch.tensor(vals, dtype=torch.float32)
     return torch.sparse_coo_tensor(indices, values, (n, n)).coalesce()
+
+
+def _build_normalized_adj_scipy(rating_matrix: np.ndarray) -> sp.csr_matrix:
+    """Build normalized bipartite adjacency as scipy CSR (fast inference)."""
+    n_u, n_i = rating_matrix.shape
+    users, items = np.nonzero(rating_matrix)
+    n = n_u + n_i
+
+    row = np.concatenate([users, items + n_u])
+    col = np.concatenate([items + n_u, users])
+
+    degree = np.zeros(n, dtype=np.float32)
+    np.add.at(degree, row, 1.0)
+    d_inv_sqrt = np.where(degree > 0, 1.0 / np.sqrt(degree), 0.0)
+    vals = (d_inv_sqrt[row] * d_inv_sqrt[col]).astype(np.float32)
+
+    return sp.csr_matrix((vals, (row, col)), shape=(n, n))
 
 
 # ------------------------------------------------------------------
@@ -92,8 +104,8 @@ class LightGCN(Recommender):
     """LightGCN recommender with retraining support for causal metrics.
 
     get_scores behaviour:
-    - Same R as training  → cached GCN forward (fast).
-    - Only user's row changed  → rebuild adjacency + forward (no retrain).
+    - Same R as training  → cached embeddings (instant).
+    - Only user's row changed  → scipy sparse forward (fast).
     - Other rows changed  → warm-start retrain (cross-user coupling).
     """
 
@@ -116,6 +128,10 @@ class LightGCN(Recommender):
         self._training_matrix: np.ndarray | None = None
         self._base_state: dict | None = None
         self._rating_mean: float = 0.0
+
+        # Cached numpy embeddings for fast inference
+        self._raw_emb: np.ndarray | None = None  # raw (layer-0) embeddings
+        self._cached_scores: np.ndarray | None = None  # propagated user×item scores
 
     # ----------------------------------------------------------
     # Training
@@ -159,7 +175,35 @@ class LightGCN(Recommender):
             rng.set_postfix(mse=total_loss / len(ratings))
 
         self._base_state = copy.deepcopy(self.model.state_dict())
+
+        # Cache raw embeddings (numpy) and propagated scores for fast inference
+        self.model.eval()
+        with torch.no_grad():
+            raw_u = self.model.user_embedding.weight.numpy().copy()
+            raw_i = self.model.item_embedding.weight.numpy().copy()
+        self._raw_emb = np.concatenate([raw_u, raw_i], axis=0)
+
+        # Propagate with scipy for caching
+        adj_sp = _build_normalized_adj_scipy(rating_matrix)
+        u_emb, i_emb = self._propagate_scipy(adj_sp)
+        self._cached_scores = u_emb @ i_emb.T + self._rating_mean
+
         return self
+
+    # ----------------------------------------------------------
+    # Scipy-based GCN propagation (fast inference)
+    # ----------------------------------------------------------
+
+    def _propagate_scipy(self, adj_scipy: sp.csr_matrix
+                         ) -> tuple[np.ndarray, np.ndarray]:
+        """GCN propagation using scipy sparse (3-5x faster than torch on CPU)."""
+        all_emb = self._raw_emb.copy()
+        embs = [all_emb]
+        for _ in range(self.n_layers):
+            all_emb = adj_scipy @ all_emb
+            embs.append(all_emb)
+        final = np.stack(embs).mean(axis=0)
+        return final[:self.n_users], final[self.n_users:]
 
     # ----------------------------------------------------------
     # Scoring
@@ -167,25 +211,26 @@ class LightGCN(Recommender):
 
     def get_scores(self, user_id: int,
                    rating_matrix: np.ndarray) -> np.ndarray:
+        # Fast path: check user's row first
+        user_same = np.array_equal(
+            rating_matrix[user_id], self._training_matrix[user_id])
+
+        if user_same:
+            # Check if full matrix is unchanged
+            if np.array_equal(rating_matrix, self._training_matrix):
+                return self._cached_scores[user_id].copy()
+            # Cross-user change
+            return self._retrain_and_score(user_id, rating_matrix)
+
+        # User's row changed. Check if ONLY user's row changed.
         diff = (rating_matrix != self._training_matrix)
         changed_rows = np.where(diff.any(axis=1))[0]
 
-        if len(changed_rows) == 0:
-            # No change — cached forward
-            with torch.no_grad():
-                u_emb, i_emb = self.model.forward(self._adj)
-                scores = (u_emb[user_id] @ i_emb.T).numpy()
-            return scores + self._rating_mean
-
-        only_self = (len(changed_rows) == 1 and changed_rows[0] == user_id)
-
-        if only_self:
-            # Self-change: rebuild adjacency, forward pass (no retrain)
-            adj = _build_normalized_adj(rating_matrix)
-            with torch.no_grad():
-                u_emb, i_emb = self.model.forward(adj)
-                scores = (u_emb[user_id] @ i_emb.T).numpy()
-            return scores + self._rating_mean
+        if len(changed_rows) == 1:
+            # Self-change only — scipy fast path
+            adj_sp = _build_normalized_adj_scipy(rating_matrix)
+            u_emb, i_emb = self._propagate_scipy(adj_sp)
+            return (u_emb[user_id] @ i_emb.T) + self._rating_mean
 
         # Cross-user change — warm-start retrain
         return self._retrain_and_score(user_id, rating_matrix)

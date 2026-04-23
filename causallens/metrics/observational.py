@@ -121,12 +121,15 @@ def recommendation_volatility(
 
     distances = []
     for _ in range(n_perturbations):
-        R_pert = rating_matrix.copy()
         items_to_rate = np.random.choice(unrated, perturbation_size, replace=False)
-        for item in items_to_rate:
-            R_pert[user_id, item] = np.random.choice([1.0, 2.0, 3.0, 4.0, 5.0])
-        new_topk = recommender.get_recommendations(user_id, R_pert, k)
-        distances.append(_jaccard_distance_items(orig_topk, new_topk))
+        old_vals = rating_matrix[user_id, items_to_rate].copy()
+        try:
+            for item in items_to_rate:
+                rating_matrix[user_id, item] = np.random.choice([1.0, 2.0, 3.0, 4.0, 5.0])
+            new_topk = recommender.get_recommendations(user_id, rating_matrix, k)
+            distances.append(_jaccard_distance_items(orig_topk, new_topk))
+        finally:
+            rating_matrix[user_id, items_to_rate] = old_vals
 
     return float(np.mean(distances))
 

@@ -48,11 +48,12 @@ REACHABILITY_TRIALS = 50       # random search trials (same solver for all model
 MANIPULATION_TRIALS = 10       # default manipulation trials
 SELF_INFLUENCE_TRIALS = 15     # default self-influence trials
 # Per-model trial overrides (heavier models get fewer trials to keep runtime bounded)
-MODEL_MANIPULATION_TRIALS = {"MF": 10, "NeuMF": 8, "LightGCN": 8, "SASRec": 8}
+MODEL_MANIPULATION_TRIALS = {"MF": 10, "NeuMF": 8, "LightGCN": 3, "SASRec": 3}
 MODEL_SELF_INFLUENCE_TRIALS = {"MF": 15, "NeuMF": 10, "LightGCN": 10, "SASRec": 10}
+MODEL_REACHABILITY_TRIALS = {"MF": 50, "NeuMF": 50, "LightGCN": 25, "SASRec": 25}
 USER_TIMEOUT = 180           # seconds per user (safety net)
 CSV_PATH = "results/phase3_results.csv"
-MAX_TOTAL_HOURS = 8.0        # raised for 4 models × 2 datasets
+MAX_TOTAL_HOURS = 48.0       # large budget for 4 models × 2 datasets unattended
 
 # ── Timeout helper ────────────────────────────────────────────────────
 
@@ -95,20 +96,23 @@ def reachability_random_search(
     rating_values = [1.0, 2.0, 3.0, 4.0, 5.0]
 
     for _ in range(n_trials):
-        R = rating_matrix.copy()
         budget = np.random.randint(1, max_budget + 1)
         items = np.random.choice(unrated, min(budget, len(unrated)), replace=False)
-        for item in items:
-            R[user_id, item] = np.random.choice(rating_values)
+        old_vals = rating_matrix[user_id, items].copy()
+        try:
+            for item in items:
+                rating_matrix[user_id, item] = np.random.choice(rating_values)
 
-        scores = recommender.get_scores(user_id, R)
-        scores_masked = scores.copy()
-        scores_masked[R[user_id] > 0] = -np.inf
-        rank = int((scores_masked > scores_masked[target_item]).sum()) + 1
+            scores = recommender.get_scores(user_id, rating_matrix)
+            scores_masked = scores.copy()
+            scores_masked[rating_matrix[user_id] > 0] = -np.inf
+            rank = int((scores_masked > scores_masked[target_item]).sum()) + 1
 
-        if rank <= k and len(items) < best_cost:
-            best_cost = len(items)
-            best_rank = rank
+            if rank <= k and len(items) < best_cost:
+                best_cost = len(items)
+                best_rank = rank
+        finally:
+            rating_matrix[user_id, items] = old_vals
 
     return {
         "cost": best_cost,
@@ -135,17 +139,21 @@ def manipulation_random_search(
         return {"displacement": 0.0}
 
     for _ in range(n_trials):
-        R = rating_matrix.copy()
         items = np.random.choice(unrated, min(epsilon, len(unrated)), replace=False)
-        for item in items:
-            R[adversary_id, item] = np.random.choice(rating_values)
+        old_vals = rating_matrix[adversary_id, items].copy()
+        try:
+            for item in items:
+                rating_matrix[adversary_id, item] = np.random.choice(rating_values)
 
-        scores = recommender.get_scores(victim_id, R)
-        scores[rating_matrix[victim_id] > 0] = -np.inf
-        new_topk = set(np.argsort(scores)[::-1][:k].tolist())
-        disp = _jaccard_distance(orig_topk, new_topk)
-        if disp > best_disp:
-            best_disp = disp
+            scores = recommender.get_scores(victim_id, rating_matrix)
+            scores[rating_matrix[victim_id] > 0] = -np.inf
+            new_topk = set(np.argsort(scores)[::-1][:k].tolist())
+
+            disp = _jaccard_distance(orig_topk, new_topk)
+            if disp > best_disp:
+                best_disp = disp
+        finally:
+            rating_matrix[adversary_id, items] = old_vals
 
     return {"displacement": best_disp}
 
@@ -153,26 +161,55 @@ def manipulation_random_search(
 def self_influence_random_search(
     recommender, user_id, rating_matrix, k=10, epsilon=5, n_trials=20,
 ):
-    """Random search self-influence."""
+    """Random search self-influence.
+
+    Mixes three action types: modify existing ratings, add new ratings
+    (rate unrated items), and remove existing ratings (set to 0).  This
+    ensures graph-based models (LightGCN, SASRec) whose scoring depends
+    on edge presence—not rating values—see structural changes.
+    """
     orig_topk = set(
         recommender.get_recommendations(user_id, rating_matrix, k).tolist()
     )
     rated = np.where(rating_matrix[user_id] > 0)[0]
-    if len(rated) == 0:
+    unrated = np.where(rating_matrix[user_id] == 0)[0]
+    if len(rated) == 0 and len(unrated) == 0:
         return 0.0
 
     rating_values = [1.0, 2.0, 3.0, 4.0, 5.0]
     best_disp = 0.0
 
     for _ in range(n_trials):
-        R = rating_matrix.copy()
-        items = np.random.choice(rated, min(epsilon, len(rated)), replace=False)
-        for item in items:
-            R[user_id, item] = np.random.choice(rating_values)
+        # Decide split: how many to modify vs add vs remove
+        n_modify = np.random.randint(0, min(epsilon, len(rated)) + 1) if len(rated) > 0 else 0
+        remaining = epsilon - n_modify
+        n_add = np.random.randint(0, min(remaining, len(unrated)) + 1) if len(unrated) > 0 else 0
+        remaining2 = remaining - n_add
+        n_remove = min(remaining2, len(rated) - n_modify) if len(rated) > n_modify else 0
 
-        scores = recommender.get_scores(user_id, R)
-        scores[R[user_id] > 0] = -np.inf
-        new_topk = set(np.argsort(scores)[::-1][:k].tolist())
+        modify_items = np.random.choice(rated, n_modify, replace=False) if n_modify > 0 else np.array([], dtype=np.int64)
+        add_items = np.random.choice(unrated, n_add, replace=False) if n_add > 0 else np.array([], dtype=np.int64)
+        # For removals, pick from rated items not already being modified
+        remaining_rated = np.setdiff1d(rated, modify_items)
+        remove_items = np.random.choice(remaining_rated, n_remove, replace=False) if n_remove > 0 and len(remaining_rated) > 0 else np.array([], dtype=np.int64)
+
+        all_items = np.concatenate([modify_items, add_items, remove_items]).astype(np.int64)
+        if len(all_items) == 0:
+            continue
+        old_vals = rating_matrix[user_id, all_items].copy()
+        try:
+            for item in modify_items:
+                rating_matrix[user_id, item] = np.random.choice(rating_values)
+            for item in add_items:
+                rating_matrix[user_id, item] = np.random.choice(rating_values)
+            for item in remove_items:
+                rating_matrix[user_id, item] = 0.0
+
+            scores = recommender.get_scores(user_id, rating_matrix)
+            scores[rating_matrix[user_id] > 0] = -np.inf
+            new_topk = set(np.argsort(scores)[::-1][:k].tolist())
+        finally:
+            rating_matrix[user_id, all_items] = old_vals
         disp = _jaccard_distance(orig_topk, new_topk)
         if disp > best_disp:
             best_disp = disp
@@ -233,7 +270,7 @@ def _compute_user_metrics_inner(
         r = reachability_random_search(
             model, uid, int(t), R, k=K,
             max_budget=REACHABILITY_MAX_BUDGET,
-            n_trials=REACHABILITY_TRIALS,
+            n_trials=MODEL_REACHABILITY_TRIALS.get(model_name, REACHABILITY_TRIALS),
         )
         if r["success"]:
             successes += 1
@@ -447,13 +484,13 @@ def run_experiment():
                 ("LightGCN", lambda: LightGCN(
                     n_u, n_i, embed_dim=64, n_layers=3,
                     n_epochs=20, batch_size=2048,
-                    retrain_steps=25,
+                    retrain_steps=15,
                 )),
                 ("SASRec", lambda: SASRec(
                     n_u, n_i, embed_dim=64, n_heads=2,
                     n_layers=2, max_seq_len=50,
                     n_epochs=30, batch_size=256,
-                    retrain_steps=25,
+                    retrain_steps=15,
                 )),
             ]
 

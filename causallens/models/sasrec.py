@@ -163,6 +163,7 @@ class SASRec(Recommender):
         self._training_matrix: np.ndarray | None = None
         self._base_state: dict | None = None
         self._sequences: np.ndarray | None = None
+        self._cached_scores: dict[int, np.ndarray] = {}  # uid → scores
 
     # ----------------------------------------------------------
     # Training
@@ -257,19 +258,28 @@ class SASRec(Recommender):
 
     def get_scores(self, user_id: int,
                    rating_matrix: np.ndarray) -> np.ndarray:
+        # Fast path: check user's row first
+        user_same = np.array_equal(
+            rating_matrix[user_id], self._training_matrix[user_id])
+
+        if user_same:
+            if np.array_equal(rating_matrix, self._training_matrix):
+                # No change — use cache
+                if user_id not in self._cached_scores:
+                    seq = torch.from_numpy(self._sequences[user_id:user_id + 1])
+                    with torch.no_grad():
+                        scores = self.model.score_all_items(seq)
+                    self._cached_scores[user_id] = scores[0].numpy()
+                return self._cached_scores[user_id].copy()
+            # Cross-user change
+            return self._retrain_and_score(user_id, rating_matrix)
+
+        # User's row changed — check if only self
         diff = (rating_matrix != self._training_matrix)
         changed_rows = np.where(diff.any(axis=1))[0]
 
-        if len(changed_rows) == 0:
-            seq = torch.from_numpy(self._sequences[user_id:user_id + 1])
-            with torch.no_grad():
-                scores = self.model.score_all_items(seq)
-            return scores[0].numpy()
-
-        only_self = (len(changed_rows) == 1 and changed_rows[0] == user_id)
-
-        if only_self:
-            # Rebuild user's sequence, forward pass — no retrain
+        if len(changed_rows) == 1:
+            # Self-change: rebuild sequence + forward (fast)
             user_seq = _build_user_sequence(rating_matrix[user_id],
                                             self.max_seq_len)
             seq = torch.from_numpy(user_seq[np.newaxis, :])
