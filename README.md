@@ -61,16 +61,6 @@ results/              Generated outputs (CSV, figures, tables)
 paper/                LaTeX source for RecSys 2026 paper
 ```
 
-## Citation
-
-```bibtex
-@inproceedings{casafranca2026causallens,
-  author    = {Casafranca, Stefano},
-  title     = {CausalLens: An Open-Source Toolkit for Causal Autonomy Auditing of Recommender Systems},
-  booktitle = {Proceedings of the 20th ACM Conference on Recommender Systems},
-  year      = {2026},
-  publisher = {ACM},
-}
 ```
 
 ## License
